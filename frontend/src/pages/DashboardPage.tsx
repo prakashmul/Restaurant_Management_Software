@@ -105,27 +105,10 @@ export const DashboardPage: React.FC = () => {
     loadHistory();
   }, []);
 
-  // Restore active session on mount
-  useEffect(() => {
-    const storedSession = localStorage.getItem(STORAGE_KEY);
-    if (storedSession) {
-      try {
-        const { startTime } = JSON.parse(storedSession);
-        const start = new Date(startTime);
-        setActiveSessionStart(start);
-        activeSessionStartRef.current = start;
-        setIsCheckedIn(true);
-        isCheckedInRef.current = true;
-        const initialElapsed = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
-        setElapsedSeconds(initialElapsed);
-      } catch (err) {
-        console.error('Failed to parse active session', err);
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    }
-  }, []);
-
-  const handleCheckOut = useCallback(async (statusReason: 'Completed' | 'Auto-Checked Out' = 'Completed') => {
+  const handleCheckOut = useCallback(async (
+    statusReason: 'Completed' | 'Auto-Checked Out' = 'Completed',
+    customCheckoutTime?: Date
+  ) => {
     const storedSession = localStorage.getItem(STORAGE_KEY);
     let sessionStart = activeSessionStartRef.current || activeSessionStart;
 
@@ -142,15 +125,16 @@ export const DashboardPage: React.FC = () => {
     isCheckedInRef.current = false;
     localStorage.removeItem(STORAGE_KEY);
 
-    const now = new Date();
+    const now = customCheckoutTime || new Date();
 
     if (sessionStart) {
-      const totalDurationSecs = Math.floor((now.getTime() - sessionStart.getTime()) / 1000);
+      const effectiveCheckout = now < sessionStart ? sessionStart : now;
+      const totalDurationSecs = Math.max(0, Math.floor((effectiveCheckout.getTime() - sessionStart.getTime()) / 1000));
 
       const payload: AttendanceRecord = {
         employeeName: currentUser,
         checkInTime: sessionStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        checkOutTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        checkOutTime: effectiveCheckout.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         duration: formatTime(totalDurationSecs),
         status: statusReason,
       };
@@ -175,6 +159,7 @@ export const DashboardPage: React.FC = () => {
   const evaluateLocation = useCallback((position: GeolocationPosition) => {
     setGeoError(null);
     const { latitude, longitude } = position.coords;
+    const timestamp = position.timestamp; // Corrected: timestamp is on GeolocationPosition
 
     const distance = calculateDistanceInMeters(
       latitude,
@@ -189,18 +174,39 @@ export const DashboardPage: React.FC = () => {
     setIsInRange(insideRadius);
 
     const hasActiveSession = isCheckedInRef.current || !!localStorage.getItem(STORAGE_KEY);
+    
     if (hasActiveSession && !insideRadius) {
-      handleCheckOut('Auto-Checked Out');
+      const departureTime = timestamp ? new Date(timestamp) : new Date();
+      handleCheckOut('Auto-Checked Out', departureTime);
     }
   }, [handleCheckOut]);
 
-  // Ref to always keep the latest evaluateLocation fresh for watchPosition
   const evaluateLocationRef = useRef(evaluateLocation);
   useEffect(() => {
     evaluateLocationRef.current = evaluateLocation;
   }, [evaluateLocation]);
 
-  // Single immediate location check
+  // Restore active session on mount
+  useEffect(() => {
+    const storedSession = localStorage.getItem(STORAGE_KEY);
+    if (storedSession) {
+      try {
+        const { startTime } = JSON.parse(storedSession);
+        const start = new Date(startTime);
+        setActiveSessionStart(start);
+        activeSessionStartRef.current = start;
+        setIsCheckedIn(true);
+        isCheckedInRef.current = true;
+        
+        const initialElapsed = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
+        setElapsedSeconds(initialElapsed);
+      } catch (err) {
+        console.error('Failed to parse active session', err);
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+  }, []);
+
   const checkCurrentLocation = useCallback(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
@@ -213,7 +219,7 @@ export const DashboardPage: React.FC = () => {
     );
   }, []);
 
-  // GPS Watcher with stable ref execution
+  // GPS Watcher
   useEffect(() => {
     if (!navigator.geolocation) {
       setGeoError('Geolocation is not supported by your browser.');
@@ -232,7 +238,7 @@ export const DashboardPage: React.FC = () => {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
-  // Re-verify position on tab focus or device wake
+  // Re-verify position on tab focus or wake
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -293,7 +299,7 @@ export const DashboardPage: React.FC = () => {
               <Clock className="w-5 h-5 text-indigo-400" /> Staff Attendance Tracker
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              Logged in as: <strong className="text-indigo-300">{currentUser}</strong> | Radius boundary: 100m.
+              Logged in as: <strong className="text-indigo-300">{currentUser}</strong> | Radius boundary: {ALLOWED_RADIUS_METERS}m.
             </p>
           </div>
 

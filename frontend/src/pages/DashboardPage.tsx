@@ -3,8 +3,8 @@ import { MapPin, Clock, History, CheckCircle2, XCircle } from 'lucide-react';
 import { posApi } from '../api/posApi';
 
 const RESTAURANT_LOCATION = {
-  latitude: 27.694343,
-  longitude: 85.266594,
+  latitude: 27.694147,
+  longitude: 85.269939,
 };
 
 const ALLOWED_RADIUS_METERS = 300;

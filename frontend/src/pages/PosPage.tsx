@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle, Filter } from 'lucide-react';
 import { posApi } from '../api/posApi';
 import { TableDetailModal } from '../components/TableDetailModal';
 import type { Table, MenuItem, OrderItem, Order } from '../types';
@@ -10,6 +10,9 @@ export const PosPage = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [currentCart, setCurrentCart] = useState<OrderItem[]>([]);
+  
+  // Category Filtering State
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   // Modal States
   const [showTableModal, setShowTableModal] = useState(false);
@@ -87,7 +90,9 @@ export const PosPage = () => {
   const addToCart = (item: MenuItem) => {
     if (!selectedTable) return alert('Please select a table first!');
 
-    const itemId = item._id || item.id || '';
+    // Robust extraction of ID string
+    const itemId = String(item._id || item.id || '');
+    if (!itemId) return;
 
     setCurrentCart((prev) => {
       const existing = prev.find((i) => i.menuItemId === itemId);
@@ -135,19 +140,15 @@ export const PosPage = () => {
     }
   };
 
-  // UPDATED: Trigger payment options modal directly from the Pay button
   const handlePayBill = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable._id || selectedTable.id || '';
 
     try {
-      // 1. Ensure latest cart items are saved to active order
       if (currentCart.length > 0) {
         await posApi.saveOrder(tableId, currentCart);
         await loadData();
       }
-
-      // 2. Open the TableDetailModal so the user can select payment options
       setModalTable(selectedTable);
     } catch (err) {
       console.error('Failed to prepare bill payment:', err);
@@ -155,15 +156,19 @@ export const PosPage = () => {
     }
   };
 
+  const categories = ['All', ...Array.from(new Set(menu.map((item) => item.category)))];
+
+  const filteredMenu = selectedCategory === 'All' 
+    ? menu 
+    : menu.filter((item) => item.category === selectedCategory);
+
   const subtotal = currentCart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0);
-  const tax = subtotal * 0.08;
-  const total = subtotal + tax;
+  // const tax = subtotal * 0.08;
+  const total = subtotal ;
 
   return (
     <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-950 text-slate-100 min-h-screen">
-      {/* LEFT COLUMN: Tables & Menu */}
       <div className="lg:col-span-8 space-y-6">
-        {/* Dining Tables Selector */}
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-lg font-bold flex items-center gap-2 text-slate-100">
@@ -224,53 +229,69 @@ export const PosPage = () => {
           </div>
         </div>
 
-        {/* Restaurant Menu Grid */}
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-          <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b border-slate-800 pb-3 gap-3">
             <h2 className="text-lg font-bold flex items-center gap-2">
               <UtensilsCrossed className="w-5 h-5 text-indigo-400" />
               Menu Items
             </h2>
-            {selectedTable ? (
-              <span className="text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-lg">
-                Adding order to: <strong>Table #{selectedTable.number}</strong>
-              </span>
-            ) : (
-              <span className="text-xs text-rose-400">Please select a table to start ordering</span>
-            )}
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Filter className="w-4 h-4 text-indigo-400 shrink-0" />
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 w-full sm:w-48"
+              >
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {menu.map((item) => (
-              <div
-                key={item._id || item.id}
-                onClick={() => addToCart(item)}
-                className="bg-slate-950 border border-slate-800 hover:border-indigo-500/60 p-3.5 rounded-xl cursor-pointer transition-all flex flex-col justify-between group"
-              >
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
-                    {item.category}
-                  </span>
-                  <h3 className="font-semibold text-sm text-slate-200 mt-0.5 group-hover:text-indigo-300 transition">
-                    {item.name}
-                  </h3>
+          {selectedTable && (
+            <div className="mb-4 text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 px-3 py-1.5 rounded-lg flex justify-between items-center">
+              <span>Adding order to: <strong>Table #{selectedTable.number}</strong></span>
+              <span className="text-[10px] text-indigo-400">Showing: {selectedCategory}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[460px] overflow-y-auto pr-1">
+            {filteredMenu.map((item) => {
+              const uniqueMenuId = item._id || item.id;
+              return (
+                <div
+                  key={uniqueMenuId}
+                  onClick={() => addToCart(item)}
+                  className="bg-slate-950 border border-slate-800 hover:border-indigo-500/60 p-3.5 rounded-xl cursor-pointer transition-all flex flex-col justify-between group"
+                >
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
+                      {item.category}
+                    </span>
+                    <h3 className="font-semibold text-sm text-slate-200 mt-0.5 group-hover:text-indigo-300 transition">
+                      {item.name}
+                    </h3>
+                  </div>
+                  <div className="mt-3 flex justify-between items-center">
+                    <span className="font-mono text-xs font-bold text-slate-300">
+                      Rs. {(item.price || 0).toFixed(0)}
+                    </span>
+                    <button className="bg-slate-800 group-hover:bg-indigo-600 text-slate-200 p-1.5 rounded-lg transition">
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-3 flex justify-between items-center">
-                  <span className="font-mono text-xs font-bold text-slate-300">
-                    Rs. {(item.price || 0).toFixed(0)}
-                  </span>
-                  <button className="bg-slate-800 group-hover:bg-indigo-600 text-slate-200 p-1.5 rounded-lg transition">
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* RIGHT COLUMN: Table Active Order & Bill */}
-      <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between h-full">
+      <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between h-min-h-screen">
         <div>
           <div className="border-b border-slate-800 pb-3 mb-4 flex justify-between items-center">
             <div>
@@ -330,10 +351,10 @@ export const PosPage = () => {
               <span>Subtotal</span>
               <span className="font-mono text-slate-200">Rs. {subtotal.toFixed(0)}</span>
             </div>
-            <div className="flex justify-between">
+            {/* <div className="flex justify-between">
               <span>Tax (8%)</span>
               <span className="font-mono text-slate-200">Rs. {tax.toFixed(0)}</span>
-            </div>
+            </div> */}
             <div className="flex justify-between text-sm font-bold text-slate-100 pt-2 border-t border-slate-800">
               <span>Total</span>
               <span className="font-mono text-indigo-400">Rs. {total.toFixed(0)}</span>
@@ -359,7 +380,6 @@ export const PosPage = () => {
         </div>
       </div>
 
-      {/* TABLE DETAIL / PAYMENT MODAL */}
       {modalTable && (
         <TableDetailModal
           table={modalTable}
@@ -393,7 +413,6 @@ export const PosPage = () => {
         />
       )}
 
-      {/* CREATE TABLE MODAL */}
       {showTableModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <form onSubmit={handleCreateTable} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm space-y-4">

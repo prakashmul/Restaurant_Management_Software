@@ -406,6 +406,11 @@ export const DashboardPage: React.FC = () => {
       {selectedRecordForPrint && (
         <div id="printable-receipt" className="hidden print:block font-mono text-black p-4 bg-white w-[320px] mx-auto text-xs leading-tight">
           <div className="text-center space-y-0.5 mb-3 border-b border-black pb-2">
+            <img 
+              src='/assets/Logo.jpeg' 
+              className='receipt-logo' 
+              alt="Logo"
+            />
             <h1 className="font-bold text-sm tracking-wide">Real Deal KTV Bar and Restaurant</h1>
             <p>120 Mc feild,Eastern Avenue,Georgetown</p>
             <p>Ph: +1(345) 329-7700</p>

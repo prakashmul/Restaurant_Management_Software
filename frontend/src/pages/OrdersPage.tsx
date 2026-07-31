@@ -4,7 +4,6 @@ import {
   Calendar,
   Filter,
   Printer,
-  FileDown,
   Trash2,
   Receipt,
   ChevronDown,
@@ -13,10 +12,11 @@ import {
   User,
 } from 'lucide-react';
 import { posApi } from '../api/posApi';
-import type { Order } from '../types';
+import type { Order, Table } from '../types';
 
 export const OrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Helper to convert any Date or ISO string into local YYYY-MM-DD
@@ -41,38 +41,46 @@ export const OrdersPage: React.FC = () => {
   // Expandable Row State for Order Details
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
-  const fetchOrders = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const data = await posApi.getOrders();
-      setOrders(Array.isArray(data) ? data : []);
+      const [orderData, tableData] = await Promise.all([
+        posApi.getOrders(),
+        posApi.getTables(),
+      ]);
+      setOrders(Array.isArray(orderData) ? orderData : []);
+      setTables(Array.isArray(tableData) ? tableData : []);
     } catch (err) {
-      console.error('Failed to load order history:', err);
+      console.error('Failed to load order history or tables:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOrders();
+    fetchData();
   }, []);
+
+  // Helper to get matching table number for an order
+  const getTableNumber = (tableId?: string) => {
+    if (!tableId) return null;
+    const foundTable = tables.find((t) => (t._id || t.id) === tableId);
+    return foundTable ? foundTable.number : tableId; // fallback to tableId if lookup fails
+  };
 
   // Filter & Sort Logic
   const filteredOrders = useMemo(() => {
-    // 1. Filter orders based on search, status, and date criteria
     const filtered = orders.filter((order) => {
       const orderId = order._id || order.id || '';
       const customerName = (order as any).customerName || '';
       const customerPhone = (order as any).customerPhone || '';
 
-      // Search Filter (ID, Customer Name, or Phone)
       const matchesSearch =
         !searchQuery ||
         orderId.toLowerCase().includes(searchQuery.toLowerCase()) ||
         customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         customerPhone.includes(searchQuery);
 
-      // Status Filter
       const status = (order.status || 'pending').toLowerCase();
       const method = ((order as any).paymentMethod || '').toLowerCase();
 
@@ -85,7 +93,6 @@ export const OrdersPage: React.FC = () => {
         matchesStatus = status === 'credit' || status === 'unsettled' || status === 'pending';
       }
 
-      // Date Filter
       let matchesDate = true;
       const orderLocalDate = formatLocalYYYYMMDD(order.createdAt);
 
@@ -105,13 +112,11 @@ export const OrdersPage: React.FC = () => {
       return matchesSearch && matchesStatus && matchesDate;
     });
 
-    // Helper to safely extract a numeric timestamp
     const getOrderTimestamp = (ord: Order): number => {
       if (ord.createdAt) {
         const t = new Date(ord.createdAt).getTime();
         if (!isNaN(t)) return t;
       }
-      // Fallback: Extract timestamp from MongoDB 24-char ObjectId hex string
       const idStr = ord._id || ord.id || '';
       if (typeof idStr === 'string' && idStr.length === 24) {
         const timestampHex = idStr.substring(0, 8);
@@ -121,7 +126,6 @@ export const OrdersPage: React.FC = () => {
       return 0;
     };
 
-    // 2. Sort so latest/newest order is placed at top (Descending)
     return [...filtered].sort((a, b) => {
       const timeA = getOrderTimestamp(a);
       const timeB = getOrderTimestamp(b);
@@ -129,7 +133,6 @@ export const OrdersPage: React.FC = () => {
     });
   }, [orders, searchQuery, statusFilter, dateFilter, selectedDate]);
 
-  // Quick Filter Handlers
   const handleSelectToday = () => {
     setDateFilter('today');
     setSelectedDate(getTodayStr());
@@ -169,15 +172,128 @@ export const OrdersPage: React.FC = () => {
     }
   };
 
-  const handlePrintReceipt = (_ord: Order, e: React.MouseEvent) => {
+  const handlePrintReceipt = (ord: Order, e: React.MouseEvent) => {
     e.stopPropagation();
-    window.print();
-  };
-
-  const handleDownloadPDF = (ord: Order, e: React.MouseEvent) => {
-    e.stopPropagation();
+    
     const orderId = ord._id || ord.id || 'N/A';
-    alert(`Downloading PDF for Order #${orderId}...`);
+    const items = ord.items || [];
+    const subtotal = ord.subtotal ?? items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 0), 0);
+    const total = ord.total ?? subtotal;
+    const createdAt = ord.createdAt ? new Date(ord.createdAt).toLocaleString() : 'N/A';
+    const tableNum = getTableNumber(ord.tableId);
+
+    const printWindow = window.open('', '_blank', 'width=800,height=650');
+    if (!printWindow) {
+      alert('Please allow popups to print receipts.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Print Receipt - Invoice</title>
+          <style>
+            body {
+              font-family: 'Courier New', Courier, monospace;
+              color: #000;
+              background: #fff;
+              margin: 0;
+              padding: 10px;
+              font-size: 12px;
+            }
+            .receipt-container {
+              max-width: 270px;
+              margin: 0 auto;
+              text-align: center;
+            }
+            .receipt-logo {
+              width: 100px;
+              max-height: 80px;
+              object-fit: contain;
+              margin: 0 auto 5px auto;
+              display: block;
+            }
+            .header h2 { margin: 0; font-size: 14px; text-transform: uppercase; }
+            .header p { margin: 2px 0; font-size: 10px; color: #333; }
+            .divider { border-top: 1px dashed #000; margin: 8px 0; }
+            .details { text-align: left; font-size: 10px; margin-bottom: 8px; }
+            .details div { display: flex; justify-content: space-between; margin-bottom: 2px; }
+            table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; }
+            th { border-bottom: 1px solid #000; padding-bottom: 3px; }
+            td { padding: 3px 0; }
+            .text-right { text-align: right; }
+            .totals { margin-top: 8px; border-top: 1px dashed #000; padding-top: 4px; font-size: 10px; }
+            .totals div { display: flex; justify-content: space-between; margin-bottom: 2px; }
+            .totals .grand-total { font-weight: bold; font-size: 12px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 3px 0; margin-top: 3px; }
+            .footer { margin-top: 15px; font-size: 10px; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-container">
+            <div class="header">
+              <img src="/assets/Logo.jpeg" class="receipt-logo" alt="Logo" />
+              <h2>Real Deal KTV Bar and Restaurant</h2>
+              <p>120 Mc feild, Eastern Avenue, Georgetown</p>
+              <p>Phone: +1(345) 329-7700</p>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="details">
+              ${tableNum ? `<div><span>Table No:</span> <strong>#${tableNum}</strong></div>` : ''}
+              <div><span>Invoice No:</span> <span>#INV-${orderId.slice(-6)}</span></div>
+              <div><span>Date:</span> <span>${createdAt}</span></div>
+            </div>
+
+            <div class="divider"></div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th class="text-right">Qty</th>
+                  <th class="text-right">Price</th>
+                  <th class="text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(item => `
+                  <tr>
+                    <td>${item.name}</td>
+                    <td class="text-right">${item.quantity}</td>
+                    <td class="text-right">Rs.${(item.price || 0).toFixed(2)}</td>
+                    <td class="text-right">Rs.${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+
+            <div class="totals">
+              <div>
+                <span>Subtotal:</span>
+                <span>Rs.${subtotal.toFixed(2)}</span>
+              </div>
+              <div class="grand-total">
+                <span>TOTAL:</span>
+                <span>Rs.${total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p>Thank you!!! Do visit us again</p>
+              <p>*** Powered by POS System ***</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   };
 
   const toggleExpand = (orderId: string) => {
@@ -200,7 +316,6 @@ export const OrdersPage: React.FC = () => {
       {/* Filter Toolbar */}
       <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-          {/* Search Box */}
           <div className="md:col-span-8 relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -212,7 +327,6 @@ export const OrdersPage: React.FC = () => {
             />
           </div>
 
-          {/* Calendar Picker Input */}
           <div className="md:col-span-4 relative">
             <Calendar className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -225,7 +339,6 @@ export const OrdersPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Toggles */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/60">
           <div className="flex flex-wrap items-center gap-2">
             <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex gap-1">
@@ -255,7 +368,6 @@ export const OrdersPage: React.FC = () => {
               </button>
             </div>
 
-            {/* STATUS FILTER */}
             <div className="relative">
               <select
                 value={statusFilter}
@@ -273,7 +385,7 @@ export const OrdersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Orders List / Table */}
+      {/* Orders List */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-slate-400 text-sm">Loading orders history...</div>
@@ -288,8 +400,8 @@ export const OrdersPage: React.FC = () => {
               const total = ord.total ?? subtotal;
               const createdAt = ord.createdAt ? new Date(ord.createdAt).toLocaleString() : 'N/A';
               const isExpanded = expandedOrderId === orderId;
+              const tableNum = getTableNumber(ord.tableId);
 
-              // Extract payment details
               const paymentMethod = ((ord as any).paymentMethod || 'cash').toUpperCase();
               const customerName = (ord as any).customerName;
               const customerPhone = (ord as any).customerPhone;
@@ -316,9 +428,9 @@ export const OrdersPage: React.FC = () => {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-xs font-bold text-indigo-400">ORD-{orderId.slice(-6)}</span>
-                          {ord.tableId && (
+                          {tableNum && (
                             <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">
-                              Table #{ord.tableId}
+                              Table #{tableNum}
                             </span>
                           )}
                         </div>
@@ -327,7 +439,6 @@ export const OrdersPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-4 md:gap-6">
-                      {/* Payment Method Badge */}
                       <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg">
                         <CreditCard className="w-3 h-3 text-indigo-400" />
                         <span className="text-[10px] font-mono font-semibold text-slate-300">
@@ -335,17 +446,14 @@ export const OrdersPage: React.FC = () => {
                         </span>
                       </div>
 
-                      {/* Status Badge */}
                       <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase border ${badgeColor}`}>
                         {ord.status || 'pending'}
                       </span>
 
-                      {/* Total Amount */}
                       <div className="font-mono text-sm font-bold text-slate-100 min-w-[80px] text-right">
-                        Rs. {total.toFixed(0)}
+                        Rs.{total.toFixed(2)}
                       </div>
 
-                      {/* Action Buttons */}
                       <div className="flex items-center gap-1">
                         <button
                           onClick={(e) => handlePrintReceipt(ord, e)}
@@ -353,13 +461,6 @@ export const OrdersPage: React.FC = () => {
                           title="Print Receipt"
                         >
                           <Printer className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => handleDownloadPDF(ord, e)}
-                          className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 transition"
-                          title="Download Invoice"
-                        >
-                          <FileDown className="w-4 h-4" />
                         </button>
                         <button
                           onClick={(e) => handleDeleteOrder(orderId, e)}
@@ -372,7 +473,6 @@ export const OrdersPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Expanded Items & Details */}
                   {isExpanded && (
                     <div className="p-4 bg-slate-950/60 border-t border-slate-800/80 space-y-3">
                       {customerName && (
@@ -392,7 +492,7 @@ export const OrdersPage: React.FC = () => {
                               <span>
                                 {item.quantity}x {item.name}
                               </span>
-                              <span>Rs. {((item.price || 0) * (item.quantity || 1)).toFixed(0)}</span>
+                              <span>Rs.{((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
                             </div>
                           ))}
                         </div>

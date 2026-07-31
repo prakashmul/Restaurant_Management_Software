@@ -4,7 +4,7 @@ export const Header: React.FC = () => {
   return (
     <header className="h-16 border-b border-slate-800 bg-slate-900/40 backdrop-blur px-6 flex items-center justify-between shrink-0">
       <div className='ml-[300px] text-4xl text-extrabold'>
-        <h1>Real Deal Restaurant and Bar</h1>
+        <h1>Real Deal KTV Bar and Restaurant</h1>
       </div>
 
       <div className="flex items-center gap-4">

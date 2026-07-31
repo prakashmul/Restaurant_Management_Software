@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { MapPin, Clock, History, CheckCircle2, XCircle } from 'lucide-react';
+import { MapPin, Clock, History, CheckCircle2, XCircle, Coffee, Play, Printer } from 'lucide-react';
 import { posApi } from '../api/posApi';
 
 const RESTAURANT_LOCATION = {
@@ -62,6 +62,7 @@ export const DashboardPage: React.FC = () => {
   }, []);
 
   const [isCheckedIn, setIsCheckedIn] = useState(false);
+  const [isOnBreak, setIsOnBreak] = useState(false);
   const [userDistance, setUserDistance] = useState<number | null>(null);
   const [isInRange, setIsInRange] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
@@ -69,12 +70,17 @@ export const DashboardPage: React.FC = () => {
   const [activeSessionStart, setActiveSessionStart] = useState<Date | null>(null);
   const activeSessionStartRef = useRef<Date | null>(null);
   const isCheckedInRef = useRef<boolean>(false);
+  const isOnBreakRef = useRef<boolean>(false);
+
+  const [accumulatedSeconds, setAccumulatedSeconds] = useState(0);
+  const accumulatedSecondsRef = useRef(0);
+  const breakStartRef = useRef<Date | null>(null);
 
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [selectedRecordForPrint, setSelectedRecordForPrint] = useState<AttendanceRecord | null>(null);
 
-  // Keep refs synchronized with state
   useEffect(() => {
     activeSessionStartRef.current = activeSessionStart;
   }, [activeSessionStart]);
@@ -82,6 +88,14 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     isCheckedInRef.current = isCheckedIn;
   }, [isCheckedIn]);
+
+  useEffect(() => {
+    isOnBreakRef.current = isOnBreak;
+  }, [isOnBreak]);
+
+  useEffect(() => {
+    accumulatedSecondsRef.current = accumulatedSeconds;
+  }, [accumulatedSeconds]);
 
   const formatTime = (totalSeconds: number) => {
     const hrs = Math.floor(totalSeconds / 3600);
@@ -120,16 +134,17 @@ export const DashboardPage: React.FC = () => {
       }
     }
 
-    // Clear session state and storage immediately
     setIsCheckedIn(false);
+    setIsOnBreak(false);
     isCheckedInRef.current = false;
+    isOnBreakRef.current = false;
     localStorage.removeItem(STORAGE_KEY);
 
     const now = customCheckoutTime || new Date();
 
     if (sessionStart) {
       const effectiveCheckout = now < sessionStart ? sessionStart : now;
-      const totalDurationSecs = Math.max(0, Math.floor((effectiveCheckout.getTime() - sessionStart.getTime()) / 1000));
+      const totalDurationSecs = accumulatedSecondsRef.current;
 
       const payload: AttendanceRecord = {
         employeeName: currentUser,
@@ -152,14 +167,16 @@ export const DashboardPage: React.FC = () => {
 
     setActiveSessionStart(null);
     activeSessionStartRef.current = null;
+    setAccumulatedSeconds(0);
+    accumulatedSecondsRef.current = 0;
     setElapsedSeconds(0);
+    breakStartRef.current = null;
   }, [activeSessionStart, currentUser]);
 
-  // Evaluate geolocation position
   const evaluateLocation = useCallback((position: GeolocationPosition) => {
     setGeoError(null);
     const { latitude, longitude } = position.coords;
-    const timestamp = position.timestamp; // Corrected: timestamp is on GeolocationPosition
+    const timestamp = position.timestamp;
 
     const distance = calculateDistanceInMeters(
       latitude,
@@ -186,20 +203,27 @@ export const DashboardPage: React.FC = () => {
     evaluateLocationRef.current = evaluateLocation;
   }, [evaluateLocation]);
 
-  // Restore active session on mount
   useEffect(() => {
     const storedSession = localStorage.getItem(STORAGE_KEY);
     if (storedSession) {
       try {
-        const { startTime } = JSON.parse(storedSession);
-        const start = new Date(startTime);
+        const parsed = JSON.parse(storedSession);
+        const start = new Date(parsed.startTime);
         setActiveSessionStart(start);
         activeSessionStartRef.current = start;
         setIsCheckedIn(true);
         isCheckedInRef.current = true;
         
-        const initialElapsed = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
-        setElapsedSeconds(initialElapsed);
+        if (parsed.onBreak) {
+          setIsOnBreak(true);
+          isOnBreakRef.current = true;
+          breakStartRef.current = parsed.breakStartTime ? new Date(parsed.breakStartTime) : new Date();
+        }
+
+        const restoredAccumulated = parsed.accumulatedSeconds || 0;
+        setAccumulatedSeconds(restoredAccumulated);
+        accumulatedSecondsRef.current = restoredAccumulated;
+        setElapsedSeconds(restoredAccumulated);
       } catch (err) {
         console.error('Failed to parse active session', err);
         localStorage.removeItem(STORAGE_KEY);
@@ -219,7 +243,6 @@ export const DashboardPage: React.FC = () => {
     );
   }, []);
 
-  // GPS Watcher
   useEffect(() => {
     if (!navigator.geolocation) {
       setGeoError('Geolocation is not supported by your browser.');
@@ -238,16 +261,9 @@ export const DashboardPage: React.FC = () => {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
-  // Re-verify position on tab focus or wake
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        const currentStart = activeSessionStartRef.current;
-        if (currentStart) {
-          const now = Date.now();
-          const seconds = Math.floor((now - currentStart.getTime()) / 1000);
-          setElapsedSeconds(seconds);
-        }
         checkCurrentLocation();
       }
     };
@@ -261,13 +277,14 @@ export const DashboardPage: React.FC = () => {
     };
   }, [checkCurrentLocation]);
 
-  // Timer Tick
   useEffect(() => {
-    if (isCheckedIn && activeSessionStart) {
+    if (isCheckedIn && !isOnBreak && activeSessionStart) {
       timerRef.current = setInterval(() => {
-        const now = Date.now();
-        const seconds = Math.floor((now - activeSessionStart.getTime()) / 1000);
-        setElapsedSeconds(seconds);
+        setAccumulatedSeconds((prev) => {
+          const nextVal = prev + 1;
+          setElapsedSeconds(nextVal);
+          return nextVal;
+        });
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -276,7 +293,19 @@ export const DashboardPage: React.FC = () => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isCheckedIn, activeSessionStart]);
+  }, [isCheckedIn, isOnBreak, activeSessionStart]);
+
+  const updateLocalStorageState = (extraData = {}) => {
+    if (!activeSessionStart) return;
+    const sessionData = {
+      startTime: activeSessionStart.toISOString(),
+      onBreak: isOnBreakRef.current,
+      breakStartTime: breakStartRef.current?.toISOString() || null,
+      accumulatedSeconds: accumulatedSecondsRef.current,
+      ...extraData,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessionData));
+  };
 
   const handleCheckIn = () => {
     if (!isInRange) return;
@@ -284,15 +313,97 @@ export const DashboardPage: React.FC = () => {
     const now = new Date();
     setIsCheckedIn(true);
     isCheckedInRef.current = true;
+    setIsOnBreak(false);
+    isOnBreakRef.current = false;
     setActiveSessionStart(now);
     activeSessionStartRef.current = now;
+    setAccumulatedSeconds(0);
+    accumulatedSecondsRef.current = 0;
     setElapsedSeconds(0);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ startTime: now.toISOString() }));
+    
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ 
+      startTime: now.toISOString(), 
+      onBreak: false, 
+      accumulatedSeconds: 0 
+    }));
+  };
+
+  const handleStartBreak = () => {
+    if (!isCheckedIn || isOnBreak) return;
+    setIsOnBreak(true);
+    isOnBreakRef.current = true;
+    breakStartRef.current = new Date();
+    updateLocalStorageState({ onBreak: true, breakStartTime: breakStartRef.current.toISOString() });
+  };
+
+  const handleEndBreak = () => {
+    if (!isCheckedIn || !isOnBreak) return;
+    setIsOnBreak(false);
+    isOnBreakRef.current = false;
+    breakStartRef.current = null;
+    updateLocalStorageState({ onBreak: false, breakStartTime: null });
+  };
+
+  const triggerPrintReceipt = (record: AttendanceRecord) => {
+    setSelectedRecordForPrint(record);
+    setTimeout(() => {
+      window.print();
+    }, 150);
   };
 
   return (
     <div className="p-6 space-y-6 bg-slate-950 text-slate-100 min-h-screen">
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6">
+      {/* Printable Area Container */}
+      {selectedRecordForPrint && (
+        <div id="printable-receipt" className="hidden print:block font-mono text-black p-2 bg-white w-[280px] mx-auto text-xs leading-tight">
+          <div className="text-center space-y-0.5 mb-3 border-b border-black pb-2">
+            <img 
+              src='/assets/Logo.jpeg' 
+              className='receipt-logo' 
+              alt="Logo"
+            />
+            <h1 className="font-bold text-sm tracking-wide">Real Deal KTV Bar and Restaurant</h1>
+            <p>120 Mc feild,Eastern Avenue,Georgetown</p>
+            <p>Ph: +1(345) 329-7700</p>
+          </div>
+          
+          <div className="space-y-1 mb-3 border-b border-black pb-2 text-[11px]">
+            <div className="flex justify-between">
+              <span>Staff Name:</span>
+              <span className="font-bold">{selectedRecordForPrint.employeeName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Position:</span>
+              <span>Staff Member</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Check In:</span>
+              <span>{selectedRecordForPrint.checkInTime}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Check Out:</span>
+              <span>{selectedRecordForPrint.checkOutTime || '--'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Hours Worked:</span>
+              <span className="font-bold">{selectedRecordForPrint.duration}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Status:</span>
+              <span>{selectedRecordForPrint.status}</span>
+            </div>
+          </div>
+
+          <div className="text-center space-y-1 pt-1 text-[10px]">
+            <p className="font-bold">*** OFFICIAL SHIFT RECORD ***</p>
+            <p>Verified via Software System</p>
+            <p className="mt-2 text-[9px]">Thank you for your hard work!</p>
+          </div>
+        </div>
+      )}
+
+      {/* Main UI */}
+      <div className="print:hidden bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div>
             <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -324,13 +435,20 @@ export const DashboardPage: React.FC = () => {
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6 bg-slate-950 p-4 rounded-xl border border-slate-800">
           <div>
-            <span className="text-xs uppercase tracking-wider text-slate-400 font-medium">Active Shift Timer</span>
-            <div className="text-3xl font-mono font-bold text-white mt-1">
-              {formatTime(elapsedSeconds)}
+            <span className="text-xs uppercase tracking-wider text-slate-400 font-medium">
+              {isOnBreak ? 'Shift Paused (On Break)' : 'Active Shift Timer'}
+            </span>
+            <div className="text-3xl font-mono font-bold text-white mt-1 flex items-center gap-3">
+              <span>{formatTime(elapsedSeconds)}</span>
+              {isOnBreak && (
+                <span className="text-xs px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg animate-pulse font-sans">
+                  On Break
+                </span>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
             {!isCheckedIn ? (
               <button
                 onClick={handleCheckIn}
@@ -344,23 +462,41 @@ export const DashboardPage: React.FC = () => {
                 <CheckCircle2 className="w-4 h-4" /> Check In
               </button>
             ) : (
-              <button
-                onClick={() => handleCheckOut('Completed')}
-                disabled={!isInRange}
-                className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
-                  isInRange
-                    ? 'bg-rose-600 hover:bg-rose-500 text-white cursor-pointer shadow-lg shadow-rose-900/20'
-                    : 'bg-slate-800/80 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
-                }`}
-              >
-                <XCircle className="w-4 h-4" /> Check Out
-              </button>
+              <>
+                {!isOnBreak ? (
+                  <button
+                    onClick={handleStartBreak}
+                    className="px-4 py-2.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white cursor-pointer shadow-lg shadow-amber-900/20"
+                  >
+                    <Coffee className="w-4 h-4" /> Break In
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleEndBreak}
+                    className="px-4 py-2.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-lg shadow-indigo-900/20"
+                  >
+                    <Play className="w-4 h-4" /> Break Out
+                  </button>
+                )}
+
+                <button
+                  onClick={() => handleCheckOut('Completed')}
+                  disabled={!isInRange}
+                  className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
+                    isInRange
+                      ? 'bg-rose-600 hover:bg-rose-500 text-white cursor-pointer shadow-lg shadow-rose-900/20'
+                      : 'bg-slate-800/80 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
+                  }`}
+                >
+                  <XCircle className="w-4 h-4" /> Check Out
+                </button>
+              </>
             )}
           </div>
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+      <div className="print:hidden bg-slate-900 border border-slate-800 rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-4">
           <History className="w-5 h-5 text-indigo-400" />
           <h3 className="text-md font-semibold text-white">Attendance History</h3>
@@ -374,13 +510,14 @@ export const DashboardPage: React.FC = () => {
                 <th className="px-4 py-3">Check In</th>
                 <th className="px-4 py-3">Check Out</th>
                 <th className="px-4 py-3">Duration</th>
-                <th className="px-4 py-3 rounded-r-xl">Status</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 rounded-r-xl text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {attendanceHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500 italic">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500 italic">
                     No attendance logs recorded yet today.
                   </td>
                 </tr>
@@ -404,6 +541,15 @@ export const DashboardPage: React.FC = () => {
                         {record.status}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => triggerPrintReceipt(record)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition-all"
+                        title="Print Bill Receipt"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-indigo-400" /> Print
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -411,6 +557,27 @@ export const DashboardPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* CSS Rules to isolate only the receipt element during print */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #printable-receipt, #printable-receipt * {
+            visibility: visible !important;
+          }
+          #printable-receipt {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 10px !important;
+            background: white !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };

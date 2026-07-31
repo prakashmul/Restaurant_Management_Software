@@ -10,7 +10,7 @@ export const PosPage = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [currentCart, setCurrentCart] = useState<OrderItem[]>([]);
-  
+ 
   // Category Filtering State
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
@@ -90,7 +90,6 @@ export const PosPage = () => {
   const addToCart = (item: MenuItem) => {
     if (!selectedTable) return alert('Please select a table first!');
 
-    // Robust extraction of ID string
     const itemId = String(item._id || item.id || '');
     if (!itemId) return;
 
@@ -158,13 +157,12 @@ export const PosPage = () => {
 
   const categories = ['All', ...Array.from(new Set(menu.map((item) => item.category)))];
 
-  const filteredMenu = selectedCategory === 'All' 
-    ? menu 
+  const filteredMenu = selectedCategory === 'All'
+    ? menu
     : menu.filter((item) => item.category === selectedCategory);
 
   const subtotal = currentCart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0);
-  // const tax = subtotal * 0.08;
-  const total = subtotal ;
+  const total = subtotal;
 
   return (
     <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-950 text-slate-100 min-h-screen">
@@ -278,7 +276,7 @@ export const PosPage = () => {
                   </div>
                   <div className="mt-3 flex justify-between items-center">
                     <span className="font-mono text-xs font-bold text-slate-300">
-                      Rs. {(item.price || 0).toFixed(0)}
+                      Rs. {(item.price || 0).toFixed(2)}
                     </span>
                     <button className="bg-slate-800 group-hover:bg-indigo-600 text-slate-200 p-1.5 rounded-lg transition">
                       <Plus className="w-3.5 h-3.5" />
@@ -322,7 +320,7 @@ export const PosPage = () => {
                 <div key={item.menuItemId} className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
                   <div>
                     <h4 className="text-xs font-semibold text-slate-200">{item.name}</h4>
-                    <span className="text-[10px] text-slate-400">Rs. {(item.price || 0).toFixed(0)} each</span>
+                    <span className="text-[10px] text-slate-400">Rs. {(item.price || 0).toFixed(2)} each</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -349,15 +347,11 @@ export const PosPage = () => {
           <div className="space-y-1.5 text-xs text-slate-400">
             <div className="flex justify-between">
               <span>Subtotal</span>
-              <span className="font-mono text-slate-200">Rs. {subtotal.toFixed(0)}</span>
+              <span className="font-mono text-slate-200">Rs. {subtotal.toFixed(2)}</span>
             </div>
-            {/* <div className="flex justify-between">
-              <span>Tax (8%)</span>
-              <span className="font-mono text-slate-200">Rs. {tax.toFixed(0)}</span>
-            </div> */}
             <div className="flex justify-between text-sm font-bold text-slate-100 pt-2 border-t border-slate-800">
               <span>Total</span>
-              <span className="font-mono text-indigo-400">Rs. {total.toFixed(0)}</span>
+              <span className="font-mono text-indigo-400">Rs. {total.toFixed(2)}</span>
             </div>
           </div>
 
@@ -387,7 +381,11 @@ export const PosPage = () => {
             const modalId = modalTable._id || modalTable.id;
             return (o.tableId === modalId) && (o.status === 'pending' || o.status === 'unsettled');
           })}
-          onClose={() => setModalTable(null)}
+          onClose={() => {
+            setModalTable(null);
+            setCurrentCart([]);
+            loadData();
+          }}
           onAddItems={() => {
             setSelectedTable(modalTable);
             setModalTable(null);
@@ -400,9 +398,6 @@ export const PosPage = () => {
             } else {
               await posApi.payOrder(orderId, paymentMethod);
             }
-            setCurrentCart([]);
-            setModalTable(null);
-            await loadData();
           }}
           onVoidOrder={async (tableId: string) => {
             await posApi.cancelTableOrder(tableId);

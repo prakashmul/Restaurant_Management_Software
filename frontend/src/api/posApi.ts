@@ -40,6 +40,16 @@ export const posApi = {
   getMenu: () => API.get<MenuItem[]>('/menu').then((r) => r.data),
   getInventory: () => API.get<InventoryItem[]>('/inventory').then((r) => r.data),
 
+  // Create New Inventory Item & History Log
+  createInventoryItem: (itemData: {
+    name: string;
+    totalQuantity: number;
+    unit: string;
+    costPerUnit: number;
+    performedBy: string;
+    description: string;
+  }) => API.post<InventoryItem>('/inventory', itemData).then((r) => r.data), 
+  
   // Tables
   getTables: () => API.get<Table[]>('/tables').then((r) => r.data),
   createTable: (number: number, seats: number) => API.post<Table>('/tables', { number, seats }).then((r) => r.data),

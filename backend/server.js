@@ -105,6 +105,45 @@ app.get('/api/inventory', async (req, res) => {
   res.json(inventory);
 });
 
+// CREATE A NEW INVENTORY ITEM & LOG INITIAL STOCK MOVEMENT
+app.post('/api/inventory', async (req, res) => {
+  try {
+    const { name, totalQuantity, unit, costPerUnit, performedBy, description } = req.body;
+
+    const qty = parseFloat(totalQuantity);
+    const cost = parseFloat(costPerUnit);
+
+    if (!name || isNaN(qty) || !unit) {
+      return res.status(400).json({ message: 'Missing required fields (name, totalQuantity, or unit)' });
+    }
+
+    // 1. Create and save the new inventory item safely with fallback values
+    const newItem = new Inventory({
+      name: name.trim(),
+      totalQuantity: qty,
+      unit: unit.trim(),
+      costPerUnit: isNaN(cost) ? 0 : cost,
+    });
+    
+    const savedItem = await newItem.save();
+
+    // 2. Create the initial stock movement history log
+    await StockHistory.create({
+      itemId: savedItem._id,
+      itemName: savedItem.name,
+      quantity: qty,
+      unit: savedItem.unit,
+      performedBy: performedBy || 'Anonymous',
+      description: description || 'Initial stock creation',
+    });
+
+    res.status(201).json(savedItem);
+  } catch (err) {
+    console.error('Error creating inventory item:', err);
+    res.status(500).json({ error: 'Failed to create inventory item: ' + err.message });
+  }
+});
+
 // RESTAURANT TABLES CRUD
 app.get('/api/tables', async (req, res) => {
   const tables = await Table.find();
@@ -443,7 +482,6 @@ app.patch('/api/inventory/:id/restock', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Read quantity from either req.body.quantity or req.body.addQuantity
     const rawQty = req.body.quantity !== undefined ? req.body.quantity : req.body.addQuantity;
     const { performedBy, description } = req.body;
 
@@ -458,7 +496,6 @@ app.patch('/api/inventory/:id/restock', async (req, res) => {
       return res.status(404).json({ message: 'Inventory item not found' });
     }
 
-    // Safely adjust quantity (allow positive or negative)
     item.totalQuantity = (Number(item.totalQuantity) || 0) + qtyToChange;
     await item.save();
 
@@ -499,7 +536,6 @@ app.delete('/api/orders/:id', async (req, res) => {
 
 // --- ATTENDANCE ENDPOINTS ---
 
-// GET Attendance History
 app.get('/api/attendance', async (req, res) => {
   try {
     const records = await Attendance.find().sort({ createdAt: -1 });
@@ -510,7 +546,6 @@ app.get('/api/attendance', async (req, res) => {
   }
 });
 
-// CREATE / SAVE Attendance Record
 app.post('/api/attendance', async (req, res) => {
   try {
     const { employeeName, checkInTime, checkOutTime, duration, status } = req.body;
@@ -533,7 +568,6 @@ app.post('/api/attendance', async (req, res) => {
 
 // --- AUTHENTICATION ENDPOINTS ---
 
-// REGISTER USER
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -566,7 +600,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// LOGIN USER (ADDED)
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;

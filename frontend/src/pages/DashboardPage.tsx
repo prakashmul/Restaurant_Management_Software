@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { MapPin, Clock, History, CheckCircle2, XCircle, Coffee, Play, Printer } from 'lucide-react';
+import { MapPin, Clock, History, CheckCircle2, XCircle, Coffee, Play, Printer, Calendar } from 'lucide-react';
 import { posApi } from '../api/posApi';
 
 const RESTAURANT_LOCATION = {
@@ -34,9 +34,10 @@ interface AttendanceRecord {
   _id?: string;
   id?: string;
   employeeName: string;
+  date?: string; // Format expected: YYYY-MM-DD
   checkInTime: string;
   checkOutTime: string | null;
-  duration: string;
+  duration: string; // "HH:MM:SS"
   status: 'Completed' | 'Auto-Checked Out' | 'Active';
 }
 
@@ -80,6 +81,11 @@ export const DashboardPage: React.FC = () => {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState<AttendanceRecord | null>(null);
+  const [isBulkPrint, setIsBulkPrint] = useState(false);
+
+  // Date Filter States
+  const [startDateFilter, setStartDateFilter] = useState('');
+  const [endDateFilter, setEndDateFilter] = useState('');
 
   useEffect(() => {
     activeSessionStartRef.current = activeSessionStart;
@@ -104,11 +110,30 @@ export const DashboardPage: React.FC = () => {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const parseDurationToSeconds = (durationStr: string) => {
+    if (!durationStr) return 0;
+    const parts = durationStr.split(':').map(Number);
+    if (parts.length === 3) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else if (parts.length === 2) {
+      return parts[0] * 60 + parts[1];
+    }
+    return 0;
+  };
+
   const loadHistory = async () => {
     try {
       const data = await posApi.fetchAttendanceHistory();
       if (Array.isArray(data)) {
-        setAttendanceHistory(data);
+        // Map data and filter to only include records belonging to the current logged-in user
+        const processedData = data
+          .map((item: any) => ({
+            ...item,
+            date: item.date || item.checkInDate || (item.createdAt ? item.createdAt.split('T')[0] : new Date().toISOString().split('T')[0])
+          }))
+          .filter((item: any) => item.employeeName === currentUser); // <-- Restricts view to only the current user
+
+        setAttendanceHistory(processedData);
       }
     } catch (err) {
       console.error('Failed to load attendance history', err);
@@ -145,9 +170,11 @@ export const DashboardPage: React.FC = () => {
     if (sessionStart) {
       const effectiveCheckout = now < sessionStart ? sessionStart : now;
       const totalDurationSecs = accumulatedSecondsRef.current;
+      const currentDateStr = new Date().toISOString().split('T')[0];
 
       const payload: AttendanceRecord = {
         employeeName: currentUser,
+        date: currentDateStr,
         checkInTime: sessionStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         checkOutTime: effectiveCheckout.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         duration: formatTime(totalDurationSecs),
@@ -345,7 +372,30 @@ export const DashboardPage: React.FC = () => {
   };
 
   const triggerPrintReceipt = (record: AttendanceRecord) => {
+    setIsBulkPrint(false);
     setSelectedRecordForPrint(record);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+  const filteredHistory = useMemo(() => {
+    return attendanceHistory.filter((record) => {
+      if (!startDateFilter && !endDateFilter) return true;
+      if (!record.date) return false; // Exclude items without a date if a filter is active
+      if (startDateFilter && record.date < startDateFilter) return false;
+      if (endDateFilter && record.date > endDateFilter) return false;
+      return true;
+    });
+  }, [attendanceHistory, startDateFilter, endDateFilter]);
+
+  const totalFilteredSeconds = useMemo(() => {
+    return filteredHistory.reduce((acc, curr) => acc + parseDurationToSeconds(curr.duration), 0);
+  }, [filteredHistory]);
+
+  const triggerBulkPrint = () => {
+    setIsBulkPrint(true);
+    setSelectedRecordForPrint({} as AttendanceRecord);
     setTimeout(() => {
       window.print();
     }, 150);
@@ -353,46 +403,67 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6 bg-slate-950 text-slate-100 min-h-screen">
-      {/* Printable Area Container */}
       {selectedRecordForPrint && (
-        <div id="printable-receipt" className="hidden print:block font-mono text-black p-2 bg-white w-[280px] mx-auto text-xs leading-tight">
+        <div id="printable-receipt" className="hidden print:block font-mono text-black p-4 bg-white w-[320px] mx-auto text-xs leading-tight">
           <div className="text-center space-y-0.5 mb-3 border-b border-black pb-2">
-            <img 
-              src='/assets/Logo.jpeg' 
-              className='receipt-logo' 
-              alt="Logo"
-            />
             <h1 className="font-bold text-sm tracking-wide">Real Deal KTV Bar and Restaurant</h1>
             <p>120 Mc feild,Eastern Avenue,Georgetown</p>
             <p>Ph: +1(345) 329-7700</p>
           </div>
-          
-          <div className="space-y-1 mb-3 border-b border-black pb-2 text-[11px]">
-            <div className="flex justify-between">
-              <span>Staff Name:</span>
-              <span className="font-bold">{selectedRecordForPrint.employeeName}</span>
+
+          {!isBulkPrint ? (
+            <div className="space-y-1 mb-3 border-b border-black pb-2 text-[11px]">
+              <div className="flex justify-between">
+                <span>Staff Name:</span>
+                <span className="font-bold">{selectedRecordForPrint.employeeName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Date:</span>
+                <span>{selectedRecordForPrint.date || 'Today'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Check In:</span>
+                <span>{selectedRecordForPrint.checkInTime}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Check Out:</span>
+                <span>{selectedRecordForPrint.checkOutTime || '--'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Hours Worked:</span>
+                <span className="font-bold">{selectedRecordForPrint.duration}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Status:</span>
+                <span>{selectedRecordForPrint.status}</span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Position:</span>
-              <span>Staff Member</span>
+          ) : (
+            <div className="space-y-2 mb-3 border-b border-black pb-2 text-[10px]">
+              <div className="text-center font-bold underline mb-1">ATTENDANCE REPORT SUMMARY</div>
+              <div className="flex justify-between mb-2">
+                <span>Range:</span>
+                <span>{startDateFilter || 'Start'} to {endDateFilter || 'Now'}</span>
+              </div>
+              {filteredHistory.map((rec, idx) => (
+                <div key={idx} className="border-b border-dashed border-gray-400 pb-1 mb-1">
+                  <div className="font-bold">{rec.employeeName} ({rec.date || 'N/A'})</div>
+                  <div className="flex justify-between">
+                    <span>In/Out:</span>
+                    <span>{rec.checkInTime} - {rec.checkOutTime || '--'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Duration:</span>
+                    <span>{rec.duration}</span>
+                  </div>
+                </div>
+              ))}
+              <div className="pt-2 pb-1 font-bold flex justify-between text-xs">
+                <span>Total Hours Worked:</span>
+                <span>{formatTime(totalFilteredSeconds)}</span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Check In:</span>
-              <span>{selectedRecordForPrint.checkInTime}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Check Out:</span>
-              <span>{selectedRecordForPrint.checkOutTime || '--'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Hours Worked:</span>
-              <span className="font-bold">{selectedRecordForPrint.duration}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Status:</span>
-              <span>{selectedRecordForPrint.status}</span>
-            </div>
-          </div>
+          )}
 
           <div className="text-center space-y-1 pt-1 text-[10px]">
             <p className="font-bold">*** OFFICIAL SHIFT RECORD ***</p>
@@ -402,7 +473,6 @@ export const DashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Main UI */}
       <div className="print:hidden bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div>
@@ -497,9 +567,45 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       <div className="print:hidden bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <History className="w-5 h-5 text-indigo-400" />
-          <h3 className="text-md font-semibold text-white">Attendance History</h3>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <History className="w-5 h-5 text-indigo-400" />
+            <h3 className="text-md font-semibold text-white">Attendance History</h3>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-xs text-slate-300">
+              <Calendar className="w-4 h-4 text-indigo-400" />
+              <span className="text-slate-400">Filter:</span>
+              <input
+                type="date"
+                value={startDateFilter}
+                onChange={(e) => setStartDateFilter(e.target.value)}
+                className="bg-transparent text-white outline-none cursor-pointer"
+              />
+              <span className="text-slate-500">to</span>
+              <input
+                type="date"
+                value={endDateFilter}
+                onChange={(e) => setEndDateFilter(e.target.value)}
+                className="bg-transparent text-white outline-none cursor-pointer"
+              />
+            </div>
+
+            <span className="text-xs text-slate-400">{filteredHistory.length} entries</span>
+
+            <button
+              onClick={triggerBulkPrint}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium transition-all shadow-lg shadow-indigo-900/20 cursor-pointer"
+            >
+              <Printer className="w-4 h-4" /> Print
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-4 flex items-center justify-between bg-slate-950 border border-slate-800 px-4 py-3 rounded-xl text-xs">
+          <span className="text-slate-400 font-medium">Total Worked Hours in Selected Range:</span>
+          <span className="font-mono font-bold text-emerald-400 text-sm">{formatTime(totalFilteredSeconds)}</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -507,6 +613,7 @@ export const DashboardPage: React.FC = () => {
             <thead className="bg-slate-950 text-slate-300 uppercase text-xs">
               <tr>
                 <th className="px-4 py-3 rounded-l-xl">Employee</th>
+                <th className="px-4 py-3">Date</th> {/* Added Date Column */}
                 <th className="px-4 py-3">Check In</th>
                 <th className="px-4 py-3">Check Out</th>
                 <th className="px-4 py-3">Duration</th>
@@ -515,16 +622,17 @@ export const DashboardPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {attendanceHistory.length === 0 ? (
+              {filteredHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500 italic">
-                    No attendance logs recorded yet today.
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 italic">
+                    No attendance logs found for the selected criteria.
                   </td>
                 </tr>
               ) : (
-                attendanceHistory.map((record, index) => (
+                filteredHistory.map((record, index) => (
                   <tr key={record._id || record.id || `record-${index}`} className="hover:bg-slate-800/30">
                     <td className="px-4 py-3 text-white font-medium">{record.employeeName}</td>
+                    <td className="px-4 py-3 text-slate-300">{record.date || '--'}</td> {/* Render Date Value */}
                     <td className="px-4 py-3">{record.checkInTime}</td>
                     <td className="px-4 py-3">{record.checkOutTime || '--'}</td>
                     <td className="px-4 py-3 font-mono text-slate-300">{record.duration}</td>
@@ -545,7 +653,7 @@ export const DashboardPage: React.FC = () => {
                       <button
                         onClick={() => triggerPrintReceipt(record)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition-all"
-                        title="Print Bill Receipt"
+                        title="Print Receipt"
                       >
                         <Printer className="w-3.5 h-3.5 text-indigo-400" /> Print
                       </button>
@@ -558,7 +666,6 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* CSS Rules to isolate only the receipt element during print */}
       <style>{`
         @media print {
           body * {

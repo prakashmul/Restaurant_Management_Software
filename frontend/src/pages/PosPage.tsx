@@ -241,7 +241,7 @@ export const PosPage = () => {
   const subtotal = currentCart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0);
 
   return (
-    <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-950 text-slate-100 min-h-screen">
+    <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-950 text-slate-100">
       {/* Left Column */}
       <div className="lg:col-span-8 space-y-6">
         {/* Table Selection */}
@@ -320,7 +320,8 @@ export const PosPage = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          {/* Fixed height + overflow-y-auto to allow scrolling after 3 rows */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[380px] overflow-y-auto pr-1">
             {categories.map((cat) => {
               const itemCount = menu.filter((m) => m.category === cat).length;
               return (
@@ -379,7 +380,7 @@ export const PosPage = () => {
             )}
           </div>
 
-          <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+          <div className="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
             {currentCart.length === 0 ? (
               <div className="text-center text-slate-500 text-xs py-12">
                 Click a category card to add items to Table #{selectedTable?.number}.

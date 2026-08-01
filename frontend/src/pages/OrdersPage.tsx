@@ -10,6 +10,9 @@ import {
   ChevronUp,
   CreditCard,
   User,
+  DollarSign,
+  TrendingUp,
+  CheckCircle2,
 } from 'lucide-react';
 import { posApi } from '../api/posApi';
 import type { Order, Table } from '../types';
@@ -18,6 +21,51 @@ export const OrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [userRole, setUserRole] = useState<string>('');
+
+  // 1. Fetch User Role directly from local storage/auth API on mount
+  useEffect(() => {
+    const detectUserRole = async () => {
+      try {
+        // Try to get from API if available
+        if (typeof (posApi as any).getCurrentUser === 'function') {
+          const user = await (posApi as any).getCurrentUser();
+          if (user?.role) {
+            setUserRole(user.role.toLowerCase());
+            return;
+          }
+        }
+      } catch (e) {
+        // API fallback failed, try reading local storage keys
+      }
+
+      // LocalStorage lookup without wild fallbacks
+      const keys = ['user', 'currentUser', 'auth', 'authUser', 'pos_user'];
+      for (const k of keys) {
+        const val = localStorage.getItem(k);
+        if (val) {
+          try {
+            const parsed = JSON.parse(val);
+            const r = parsed?.role || parsed?.user?.role || parsed?.type;
+            if (r) {
+              setUserRole(r.toString().toLowerCase());
+              return;
+            }
+          } catch {
+            if (val.toLowerCase() === 'owner' || val.toLowerCase() === 'staff') {
+              setUserRole(val.toLowerCase());
+              return;
+            }
+          }
+        }
+      }
+    };
+
+    detectUserRole();
+  }, []);
+
+  // Only return true if role explicitly equals 'owner' or 'admin'
+  const isOwner = userRole === 'owner' || userRole === 'admin';
 
   // Helper to convert any Date or ISO string into local YYYY-MM-DD
   const formatLocalYYYYMMDD = (dateInput?: string | Date) => {
@@ -65,7 +113,7 @@ export const OrdersPage: React.FC = () => {
   const getTableNumber = (tableId?: string) => {
     if (!tableId) return null;
     const foundTable = tables.find((t) => (t._id || t.id) === tableId);
-    return foundTable ? foundTable.number : tableId; // fallback to tableId if lookup fails
+    return foundTable ? foundTable.number : tableId;
   };
 
   // Filter & Sort Logic
@@ -133,6 +181,49 @@ export const OrdersPage: React.FC = () => {
     });
   }, [orders, searchQuery, statusFilter, dateFilter, selectedDate]);
 
+  // Financial Summary Computations
+  const financialSummary = useMemo(() => {
+    let targetDate = getTodayStr();
+    if (dateFilter === 'yesterday') {
+      const yday = new Date();
+      yday.setDate(yday.getDate() - 1);
+      targetDate = formatLocalYYYYMMDD(yday);
+    } else if (dateFilter === 'custom') {
+      targetDate = selectedDate;
+    }
+
+    let todaysSale = 0;
+    let creditPaid = 0;
+
+    orders.forEach((order) => {
+      const orderDate = formatLocalYYYYMMDD(order.createdAt);
+      
+      if (dateFilter !== 'all' && orderDate !== targetDate) return;
+
+      const items = order.items || [];
+      const subtotal = order.subtotal ?? items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 0), 0);
+      const totalAmount = order.total ?? subtotal;
+      const status = (order.status || 'pending').toLowerCase();
+      const method = ((order as any).paymentMethod || '').toLowerCase();
+
+      // Direct Sales
+      if (status === 'paid' && method !== 'credit') {
+        todaysSale += totalAmount;
+      }
+
+      // Credit Paid
+      if (status === 'settled') {
+        creditPaid += totalAmount;
+      }
+    });
+
+    return {
+      todaysSale,
+      creditPaid,
+      totalReceived: todaysSale + creditPaid,
+    };
+  }, [orders, dateFilter, selectedDate]);
+
   const handleSelectToday = () => {
     setDateFilter('today');
     setSelectedDate(getTodayStr());
@@ -174,7 +265,7 @@ export const OrdersPage: React.FC = () => {
 
   const handlePrintReceipt = (ord: Order, e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     const orderId = ord._id || ord.id || 'N/A';
     const items = ord.items || [];
     const subtotal = ord.subtotal ?? items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 0), 0);
@@ -193,26 +284,9 @@ export const OrdersPage: React.FC = () => {
         <head>
           <title>Print Receipt - Invoice</title>
           <style>
-            body {
-              font-family: 'Courier New', Courier, monospace;
-              color: #000;
-              background: #fff;
-              margin: 0;
-              padding: 10px;
-              font-size: 12px;
-            }
-            .receipt-container {
-              max-width: 270px;
-              margin: 0 auto;
-              text-align: center;
-            }
-            .receipt-logo {
-              width: 100px;
-              max-height: 80px;
-              object-fit: contain;
-              margin: 0 auto 5px auto;
-              display: block;
-            }
+            body { font-family: 'Courier New', Courier, monospace; color: #000; background: #fff; margin: 0; padding: 10px; font-size: 12px; }
+            .receipt-container { max-width: 270px; margin: 0 auto; text-align: center; }
+            .receipt-logo { width: 100px; max-height: 80px; object-fit: contain; margin: 0 auto 5px auto; display: block; }
             .header h2 { margin: 0; font-size: 14px; text-transform: uppercase; }
             .header p { margin: 2px 0; font-size: 10px; color: #333; }
             .divider { border-top: 1px dashed #000; margin: 8px 0; }
@@ -236,17 +310,13 @@ export const OrdersPage: React.FC = () => {
               <p>120 Mc feild, Eastern Avenue, Georgetown</p>
               <p>Phone: +1(345) 329-7700</p>
             </div>
-
             <div class="divider"></div>
-
             <div class="details">
               ${tableNum ? `<div><span>Table No:</span> <strong>#${tableNum}</strong></div>` : ''}
               <div><span>Invoice No:</span> <span>#INV-${orderId.slice(-6)}</span></div>
               <div><span>Date:</span> <span>${createdAt}</span></div>
             </div>
-
             <div class="divider"></div>
-
             <table>
               <thead>
                 <tr>
@@ -267,18 +337,10 @@ export const OrdersPage: React.FC = () => {
                 `).join('')}
               </tbody>
             </table>
-
             <div class="totals">
-              <div>
-                <span>Subtotal:</span>
-                <span>Rs.${subtotal.toFixed(2)}</span>
-              </div>
-              <div class="grand-total">
-                <span>TOTAL:</span>
-                <span>Rs.${total.toFixed(2)}</span>
-              </div>
+              <div><span>Subtotal:</span><span>Rs.${subtotal.toFixed(2)}</span></div>
+              <div class="grand-total"><span>TOTAL:</span><span>Rs.${total.toFixed(2)}</span></div>
             </div>
-
             <div class="footer">
               <p>Thank you!!! Do visit us again</p>
               <p>*** Powered by POS System ***</p>
@@ -312,6 +374,55 @@ export const OrdersPage: React.FC = () => {
           <p className="text-xs text-slate-400">View and manage past transactions.</p>
         </div>
       </div>
+
+      {/* Financial Summary Cards Bar - Strictly Visible ONLY to Owners */}
+      {isOwner && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-xs text-slate-400 font-medium">
+                {dateFilter === 'today'
+                  ? "Today's Sale"
+                  : dateFilter === 'yesterday'
+                  ? "Yesterday's Sale"
+                  : dateFilter === 'all'
+                  ? 'Total Direct Sales'
+                  : 'Selected Date Sales'}
+              </span>
+              <div className="text-xl font-bold font-mono text-slate-100">
+                Rs.{financialSummary.todaysSale.toFixed(2)}
+              </div>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <TrendingUp className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-xs text-slate-400 font-medium">Credit Paid</span>
+              <div className="text-xl font-bold font-mono text-emerald-400">
+                Rs.{financialSummary.creditPaid.toFixed(2)}
+              </div>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-xs text-slate-400 font-medium">Total Amount Received</span>
+              <div className="text-xl font-bold font-mono text-cyan-400">
+                Rs.{financialSummary.totalReceived.toFixed(2)}
+              </div>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+              <DollarSign className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter Toolbar */}
       <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4">
@@ -473,8 +584,9 @@ export const OrdersPage: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Expanded Order Content */}
                   {isExpanded && (
-                    <div className="p-4 bg-slate-950/60 border-t border-slate-800/80 space-y-3">
+                    <div className="p-4 bg-slate-950/60 border-t border-slate-800/80 space-y-4">
                       {customerName && (
                         <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 p-2.5 rounded-xl text-xs text-indigo-300">
                           <User className="w-4 h-4 text-indigo-400" />
@@ -495,6 +607,17 @@ export const OrdersPage: React.FC = () => {
                               <span>Rs.{((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
                             </div>
                           ))}
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-800/80 flex flex-col items-end text-xs font-mono space-y-1">
+                        <div className="flex justify-between w-full max-w-xs text-slate-400">
+                          <span>Subtotal:</span>
+                          <span>Rs.{subtotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between w-full max-w-xs font-bold text-sm text-slate-100 pt-1 border-t border-slate-800">
+                          <span>Total Order Amount:</span>
+                          <span className="text-emerald-400">Rs.{total.toFixed(2)}</span>
                         </div>
                       </div>
                     </div>

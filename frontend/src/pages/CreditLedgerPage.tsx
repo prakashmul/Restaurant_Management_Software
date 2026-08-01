@@ -203,6 +203,25 @@ export const CreditLedgerPage = () => {
   const totalDebt = useMemo(() => customerLedger.reduce((sum, c) => sum + c.debtOwed, 0), [customerLedger]);
   const totalActiveOrders = useMemo(() => customerLedger.reduce((sum, c) => sum + c.ordersCount, 0), [customerLedger]);
 
+  // NEW FEATURE: Calculate total credit amount settled till date from payment logs across all customers
+  const totalSettledAmount = useMemo(() => {
+    return customers.reduce((accTotal, customer) => {
+      if (!customer.notesHistory || customer.notesHistory.length === 0) return accTotal;
+
+      const customerSettledSum = customer.notesHistory.reduce((sum, note) => {
+        // Regex extracts payment numbers from notes (e.g., "Rs.500", "Rs. 1,000", "Deducted 250")
+        const match = note.match(/(?:Rs\.?\s*|Deducted\s*)([\d,]+(?:\.\d+)?)/i);
+        if (match) {
+          const parsedVal = parseFloat(match[1].replace(/,/g, ''));
+          return sum + (isNaN(parsedVal) ? 0 : parsedVal);
+        }
+        return sum;
+      }, 0);
+
+      return accTotal + customerSettledSum;
+    }, 0);
+  }, [customers]);
+
   // CSV Export
   const handleExportCSV = () => {
     if (filteredCustomers.length === 0) return alert('No data available to export');
@@ -286,7 +305,8 @@ export const CreditLedgerPage = () => {
       </div>
 
       {/* METRIC CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Card 1: Outstanding Balance (Filtered by Tab) */}
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex items-center justify-between shadow-lg">
           <div>
             <span className="text-xs font-bold tracking-wider uppercase text-slate-400">Total Balance ({activeTab})</span>
@@ -299,6 +319,20 @@ export const CreditLedgerPage = () => {
           </div>
         </div>
 
+        {/* Card 2: NEW FEATURE - Total Credit Settled Till Date */}
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex items-center justify-between shadow-lg">
+          <div>
+            <span className="text-xs font-bold tracking-wider uppercase text-slate-400">Total Credit Settled</span>
+            <div className="text-3xl font-black text-emerald-400 mt-1 font-mono">
+              Rs. {Number(totalSettledAmount.toFixed(2)).toLocaleString()}
+            </div>
+          </div>
+          <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Card 3: Total Credit Orders */}
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex items-center justify-between shadow-lg">
           <div>
             <span className="text-xs font-bold tracking-wider uppercase text-slate-400">Total Credit Orders</span>

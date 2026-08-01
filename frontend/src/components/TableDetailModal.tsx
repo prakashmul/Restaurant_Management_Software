@@ -45,7 +45,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   const [isEditingName, setIsEditingName] = useState<boolean>(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'fonepay' | 'card' | 'split' | 'credit'>('cash');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  
+
   const [paymentSuccess, setPaymentSuccess] = useState<boolean>(false);
   const [cachedOrderItems] = useState(order?.items || []);
 
@@ -59,8 +59,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   const [creditCustomerPhone, setCreditCustomerPhone] = useState<string>(order?.customerPhone || '');
 
   const itemsToDisplay = paymentSuccess && cachedOrderItems.length > 0 ? cachedOrderItems : (order?.items || []);
-  
-  // Both subtotal and total are derived strictly from the items sum
+
   const subtotal = itemsToDisplay.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0);
   const total = subtotal;
 
@@ -105,13 +104,13 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
             .header p { margin: 2px 0; font-size: 10px; color: #333; }
             .divider { border-top: 1px dashed #000; margin: 8px 0; }
             .details { text-align: left; font-size: 10px; margin-bottom: 8px; }
-            .details div { display: flex; justify-content: space-between; margin-bottom: 2px; }
+            .details div { display: flex; justify-between; margin-bottom: 2px; }
             table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; }
             th { border-bottom: 1px solid #000; padding-bottom: 3px; }
             td { padding: 3px 0; }
             .text-right { text-align: right; }
             .totals { margin-top: 8px; border-top: 1px dashed #000; padding-top: 4px; font-size: 10px; }
-            .totals div { display: flex; justify-content: space-between; margin-bottom: 2px; }
+            .totals div { display: flex; justify-between; margin-bottom: 2px; }
             .totals .grand-total { font-weight: bold; font-size: 12px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 3px 0; margin-top: 3px; }
             .footer { margin-top: 15px; font-size: 10px; text-align: center; }
           </style>
@@ -172,7 +171,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
       } else {
         await onPayOrder(orderId, paymentMethod);
       }
-      
+
       setPaymentSuccess(true);
     } catch (err) {
       console.error('Payment Error:', err);
@@ -515,7 +514,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
         </div>
       </div>
 
-      {/* Hidden Printable Receipt Template using consistent order ID for Invoice No */}
+      {/* Hidden Printable Receipt Template */}
       <div id="printable-receipt" className="hidden">
         <div className="receipt-container">
           <div className="header">
@@ -553,8 +552,8 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                 <tr key={idx}>
                   <td>{item.name}</td>
                   <td className="text-right">{item.quantity}</td>
-                  <td className="text-right">Rs.{item.price.toFixed(2)}</td>
-                  <td className="text-right">Rs.{(item.price * item.quantity).toFixed(2)}</td>
+                  <td className="text-right">Rs.{(item.price || 0).toFixed(2)}</td>
+                  <td className="text-right">Rs.{((item.price || 0) * (item.quantity || 0)).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>

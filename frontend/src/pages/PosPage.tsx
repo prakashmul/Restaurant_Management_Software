@@ -1,22 +1,33 @@
-import { useState, useEffect } from 'react';
-import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle, Filter } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle, FolderPlus } from 'lucide-react';
 import { posApi } from '../api/posApi';
 import { TableDetailModal } from '../components/TableDetailModal';
-import type { Table, MenuItem, OrderItem, Order } from '../types';
+import { CategoryModal } from '../components/CategoryModal';
+import type { Table, MenuItem, OrderItem, Order, InventoryItem } from '../types';
+
+// Helper function to safely extract string IDs across Mongo populated objects or standard strings
+const getId = (item: any): string => {
+  if (!item) return '';
+  if (typeof item === 'string') return item;
+  return String(item._id || item.id || '');
+};
 
 export const PosPage = () => {
   const [tables, setTables] = useState<Table[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [categories, setCategories] = useState<string[]>(['Appetizer']);
+  const [inventoryList, setInventoryList] = useState<InventoryItem[]>([]);
+
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [currentCart, setCurrentCart] = useState<OrderItem[]>([]);
- 
-  // Category Filtering State
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   // Modal States
   const [showTableModal, setShowTableModal] = useState(false);
   const [modalTable, setModalTable] = useState<Table | null>(null);
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [selectedCategoryModal, setSelectedCategoryModal] = useState<string | null>(null);
 
   // New Table Form States
   const [newTableNum, setNewTableNum] = useState('');
@@ -24,17 +35,32 @@ export const PosPage = () => {
 
   const loadData = async () => {
     try {
-      const [tbls, mnu, ords] = await Promise.all([
+      const [tbls, mnu, ords, inv] = await Promise.all([
         posApi.getTables(),
         posApi.getMenu(),
         posApi.getOrders(),
+        posApi.getInventory(),
       ]);
-      setTables(tbls || []);
-      setMenu(mnu || []);
-      setOrders(ords || []);
+      const fetchedTables = tbls || [];
+      const fetchedOrders = ords || [];
 
-      if (tbls && tbls.length > 0 && !selectedTable) {
-        setSelectedTable(tbls[0]);
+      setTables(fetchedTables);
+      setMenu(mnu || []);
+      setOrders(fetchedOrders);
+      setInventoryList(inv || []);
+
+      const existingCategories = Array.from(new Set((mnu || []).map((item) => item.category)));
+      if (existingCategories.length > 0) {
+        setCategories(existingCategories);
+      }
+
+      // Sync selectedTable reference with newly loaded tables
+      if (fetchedTables.length > 0) {
+        setSelectedTable((prevSelected) => {
+          if (!prevSelected) return fetchedTables[0];
+          const updated = fetchedTables.find((t) => getId(t) === getId(prevSelected));
+          return updated || fetchedTables[0];
+        });
       }
     } catch (err) {
       console.error('Failed to connect to POS Server:', err);
@@ -45,16 +71,32 @@ export const PosPage = () => {
     loadData();
   }, []);
 
-  // Sync cart when active table changes safely
+  // Synchronize cart with the active order whenever active table or orders list changes
   useEffect(() => {
     if (selectedTable) {
-      const selectedId = selectedTable._id || selectedTable.id;
-      const activeOrder = orders.find(
-        (o) => o.tableId === selectedId && o.status === 'pending'
-      );
+      const selectedId = getId(selectedTable);
+      const activeOrder = orders.find((o) => {
+        const orderTableId = getId(o.tableId);
+        const isMatchingTable = orderTableId === selectedId;
+        // Cast status to string to satisfy TypeScript strict equality checks
+        const statusStr = o.status as string;
+        const isActiveStatus = statusStr === 'pending' || statusStr === 'unsettled' || statusStr === 'open';
+        return isMatchingTable && isActiveStatus;
+      });
+
       setCurrentCart(activeOrder?.items || []);
     }
   }, [selectedTable, orders]);
+
+  const handleCreateCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    if (!categories.includes(newCategoryName)) {
+      setCategories((prev) => [...prev, newCategoryName.trim()]);
+    }
+    setNewCategoryName('');
+    setShowAddCategoryModal(false);
+  };
 
   const handleTableCardClick = (tbl: Table) => {
     setSelectedTable(tbl);
@@ -79,9 +121,9 @@ export const PosPage = () => {
     e.stopPropagation();
     try {
       await posApi.deleteTable(id);
-      setTables((prev) => prev.filter((t) => (t._id || t.id) !== id));
-      if ((selectedTable?._id || selectedTable?.id) === id) setSelectedTable(null);
-      if ((modalTable?._id || modalTable?.id) === id) setModalTable(null);
+      setTables((prev) => prev.filter((t) => getId(t) !== id));
+      if (getId(selectedTable) === id) setSelectedTable(null);
+      if (getId(modalTable) === id) setModalTable(null);
     } catch (err) {
       alert('Failed to delete table');
     }
@@ -90,13 +132,13 @@ export const PosPage = () => {
   const addToCart = (item: MenuItem) => {
     if (!selectedTable) return alert('Please select a table first!');
 
-    const itemId = String(item._id || item.id || '');
+    const itemId = getId(item);
     if (!itemId) return;
 
     setCurrentCart((prev) => {
-      const existing = prev.find((i) => i.menuItemId === itemId);
+      const existing = prev.find((i) => getId(i.menuItemId) === itemId);
       if (existing) {
-        return prev.map((i) => (i.menuItemId === itemId ? { ...i, quantity: i.quantity + 1 } : i));
+        return prev.map((i) => (getId(i.menuItemId) === itemId ? { ...i, quantity: i.quantity + 1 } : i));
       }
       return [...prev, { menuItemId: itemId, name: item.name, price: item.price || 0, quantity: 1 }];
     });
@@ -105,14 +147,14 @@ export const PosPage = () => {
   const updateQty = (menuItemId: string, delta: number) => {
     setCurrentCart((prev) =>
       prev
-        .map((i) => (i.menuItemId === menuItemId ? { ...i, quantity: i.quantity + delta } : i))
+        .map((i) => (getId(i.menuItemId) === menuItemId ? { ...i, quantity: i.quantity + delta } : i))
         .filter((i) => i.quantity > 0)
     );
   };
 
   const handleCancelOrder = async () => {
     if (!selectedTable) return;
-    const tableId = selectedTable._id || selectedTable.id || '';
+    const tableId = getId(selectedTable);
 
     if (window.confirm(`Are you sure you want to cancel all items for Table #${selectedTable.number}?`)) {
       try {
@@ -127,7 +169,7 @@ export const PosPage = () => {
 
   const handleSaveOrder = async () => {
     if (!selectedTable || currentCart.length === 0) return;
-    const tableId = selectedTable._id || selectedTable.id || '';
+    const tableId = getId(selectedTable);
 
     try {
       await posApi.saveOrder(tableId, currentCart);
@@ -141,7 +183,7 @@ export const PosPage = () => {
 
   const handlePayBill = async () => {
     if (!selectedTable) return;
-    const tableId = selectedTable._id || selectedTable.id || '';
+    const tableId = getId(selectedTable);
 
     try {
       if (currentCart.length > 0) {
@@ -155,18 +197,13 @@ export const PosPage = () => {
     }
   };
 
-  const categories = ['All', ...Array.from(new Set(menu.map((item) => item.category)))];
-
-  const filteredMenu = selectedCategory === 'All'
-    ? menu
-    : menu.filter((item) => item.category === selectedCategory);
-
   const subtotal = currentCart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0);
-  const total = subtotal;
 
   return (
     <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-950 text-slate-100 min-h-screen">
+      {/* Left Column */}
       <div className="lg:col-span-8 space-y-6">
+        {/* Table Selection */}
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-lg font-bold flex items-center gap-2 text-slate-100">
@@ -183,9 +220,8 @@ export const PosPage = () => {
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {tables.map((tbl) => {
-              const tblId = tbl._id || tbl.id || '';
-              const selectedTblId = selectedTable?._id || selectedTable?.id;
-              const isSelected = selectedTblId === tblId;
+              const tblId = getId(tbl);
+              const isSelected = getId(selectedTable) === tblId;
               const isOccupied = tbl.status === 'occupied';
 
               return (
@@ -227,60 +263,44 @@ export const PosPage = () => {
           </div>
         </div>
 
+        {/* Menu Categories Grid */}
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b border-slate-800 pb-3 gap-3">
+          <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-3">
             <h2 className="text-lg font-bold flex items-center gap-2">
               <UtensilsCrossed className="w-5 h-5 text-indigo-400" />
-              Menu Items
+              Menu Categories
             </h2>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <Filter className="w-4 h-4 text-indigo-400 shrink-0" />
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 w-full sm:w-48"
-              >
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <button
+              onClick={() => setShowAddCategoryModal(true)}
+              className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 px-3 py-1.5 rounded-lg transition font-medium"
+            >
+              <FolderPlus className="w-4 h-4 text-indigo-400" />
+              Add Category
+            </button>
           </div>
 
-          {selectedTable && (
-            <div className="mb-4 text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 px-3 py-1.5 rounded-lg flex justify-between items-center">
-              <span>Adding order to: <strong>Table #{selectedTable.number}</strong></span>
-              <span className="text-[10px] text-indigo-400">Showing: {selectedCategory}</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[460px] overflow-y-auto pr-1">
-            {filteredMenu.map((item) => {
-              const uniqueMenuId = item._id || item.id;
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {categories.map((cat) => {
+              const itemCount = menu.filter((m) => m.category === cat).length;
               return (
                 <div
-                  key={uniqueMenuId}
-                  onClick={() => addToCart(item)}
-                  className="bg-slate-950 border border-slate-800 hover:border-indigo-500/60 p-3.5 rounded-xl cursor-pointer transition-all flex flex-col justify-between group"
+                  key={cat}
+                  onClick={() => setSelectedCategoryModal(cat)}
+                  className="bg-slate-950 border border-slate-800 hover:border-indigo-500 p-4 rounded-xl cursor-pointer transition-all flex flex-col justify-between group"
                 >
                   <div>
                     <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
-                      {item.category}
+                      Category
                     </span>
-                    <h3 className="font-semibold text-sm text-slate-200 mt-0.5 group-hover:text-indigo-300 transition">
-                      {item.name}
+                    <h3 className="font-bold text-base text-slate-100 mt-1 group-hover:text-indigo-300 transition">
+                      {cat}
                     </h3>
                   </div>
-                  <div className="mt-3 flex justify-between items-center">
-                    <span className="font-mono text-xs font-bold text-slate-300">
-                      Rs. {(item.price || 0).toFixed(2)}
+                  <div className="mt-4 flex justify-between items-center text-xs text-slate-400">
+                    <span>{itemCount} Items</span>
+                    <span className="text-indigo-400 font-semibold group-hover:translate-x-1 transition-transform">
+                      View →
                     </span>
-                    <button className="bg-slate-800 group-hover:bg-indigo-600 text-slate-200 p-1.5 rounded-lg transition">
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 </div>
               );
@@ -289,7 +309,8 @@ export const PosPage = () => {
         </div>
       </div>
 
-      <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between h-min-h-screen">
+      {/* Right Column (Cart / Order Summary) */}
+      <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between">
         <div>
           <div className="border-b border-slate-800 pb-3 mb-4 flex justify-between items-center">
             <div>
@@ -301,9 +322,9 @@ export const PosPage = () => {
             {currentCart.length > 0 && (
               <button
                 onClick={handleCancelOrder}
-                className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-2.5 py-1 rounded-lg transition"
+                className="text-xs text-rose-400 flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-lg"
               >
-                <XCircle className="w-3.5 h-3.5" /> Clear Order
+                <XCircle className="w-3.5 h-3.5" /> Clear
               </button>
             )}
           </div>
@@ -311,28 +332,26 @@ export const PosPage = () => {
           <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
             {currentCart.length === 0 ? (
               <div className="text-center text-slate-500 text-xs py-12">
-                {selectedTable
-                  ? `Click menu items on the left to add dishes to Table #${selectedTable.number}.`
-                  : 'Select a table above to start taking orders.'}
+                Click a category card to add items to Table #{selectedTable?.number}.
               </div>
             ) : (
               currentCart.map((item) => (
-                <div key={item.menuItemId} className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <div key={getId(item.menuItemId)} className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
                   <div>
                     <h4 className="text-xs font-semibold text-slate-200">{item.name}</h4>
                     <span className="text-[10px] text-slate-400">Rs. {(item.price || 0).toFixed(2)} each</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => updateQty(item.menuItemId, -1)}
-                      className="w-6 h-6 bg-slate-800 hover:bg-slate-700 text-xs rounded font-bold transition text-slate-300"
+                      onClick={() => updateQty(getId(item.menuItemId), -1)}
+                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300"
                     >
                       -
                     </button>
                     <span className="text-xs font-mono font-bold w-4 text-center">{item.quantity}</span>
                     <button
-                      onClick={() => updateQty(item.menuItemId, 1)}
-                      className="w-6 h-6 bg-slate-800 hover:bg-slate-700 text-xs rounded font-bold transition text-slate-300"
+                      onClick={() => updateQty(getId(item.menuItemId), 1)}
+                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300"
                     >
                       +
                     </button>
@@ -344,29 +363,23 @@ export const PosPage = () => {
         </div>
 
         <div className="border-t border-slate-800 pt-4 space-y-3 mt-4">
-          <div className="space-y-1.5 text-xs text-slate-400">
-            <div className="flex justify-between">
-              <span>Subtotal</span>
-              <span className="font-mono text-slate-200">Rs. {subtotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm font-bold text-slate-100 pt-2 border-t border-slate-800">
-              <span>Total</span>
-              <span className="font-mono text-indigo-400">Rs. {total.toFixed(2)}</span>
-            </div>
+          <div className="flex justify-between text-sm font-bold text-slate-100">
+            <span>Total</span>
+            <span className="font-mono text-indigo-400">Rs. {subtotal.toFixed(2)}</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleSaveOrder}
               disabled={!selectedTable || currentCart.length === 0}
-              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5"
+              className="py-2.5 bg-slate-800 disabled:opacity-40 text-slate-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5"
             >
-              <CheckCircle2 className="w-3.5 h-3.5" /> Save Order
+              <CheckCircle2 className="w-3.5 h-3.5" /> Save
             </button>
             <button
               onClick={handlePayBill}
               disabled={!selectedTable || currentCart.length === 0}
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5"
+              className="py-2.5 bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5"
             >
               <CreditCard className="w-3.5 h-3.5" /> Pay
             </button>
@@ -374,12 +387,26 @@ export const PosPage = () => {
         </div>
       </div>
 
+      {/* Category Items Modal */}
+      {selectedCategoryModal && (
+        <CategoryModal
+          category={selectedCategoryModal}
+          menuItems={menu.filter((m) => m.category === selectedCategoryModal)}
+          inventoryList={inventoryList}
+          onClose={() => setSelectedCategoryModal(null)}
+          onAddToCart={addToCart}
+          onItemCreated={loadData}
+        />
+      )}
+
+      {/* Modal: Table Detail Modal */}
       {modalTable && (
         <TableDetailModal
           table={modalTable}
           order={orders.find((o) => {
-            const modalId = modalTable._id || modalTable.id;
-            return (o.tableId === modalId) && (o.status === 'pending' || o.status === 'unsettled');
+            const modalId = getId(modalTable);
+            const statusStr = o.status as string;
+            return getId(o.tableId) === modalId && (statusStr === 'pending' || statusStr === 'unsettled' || statusStr === 'open');
           })}
           onClose={() => {
             setModalTable(null);
@@ -408,6 +435,39 @@ export const PosPage = () => {
         />
       )}
 
+      {/* Modal: Add Category */}
+      {showAddCategoryModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <form onSubmit={handleCreateCategory} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm space-y-4">
+            <h3 className="font-bold text-slate-100">Add New Category</h3>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Category Name</label>
+              <input
+                type="text"
+                required
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="e.g. Desserts, Drinks"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddCategoryModal(false)}
+                className="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs rounded-lg"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg">
+                Create
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal: Add Table */}
       {showTableModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <form onSubmit={handleCreateTable} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm space-y-4">

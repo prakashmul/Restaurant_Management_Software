@@ -41,42 +41,6 @@ mongoose
 // --- SEED DEFAULT DATA IF DATABASE IS EMPTY ---
 async function seedInitialData() {
   try {
-    const invCount = await Inventory.countDocuments();
-    if (invCount === 0) {
-      console.log('Seeding initial inventory...');
-      const invItems = await Inventory.insertMany([
-        { name: 'Potato Fries (Bulk)', totalQuantity: 10, unit: 'kg', costPerUnit: 2.50 },
-        { name: 'Wagyu Beef Patties', totalQuantity: 50, unit: 'units', costPerUnit: 4.00 },
-        { name: 'Pizza Dough & Cheese', totalQuantity: 30, unit: 'units', costPerUnit: 3.00 },
-        { name: 'Craft IPA Keg', totalQuantity: 50, unit: 'liters', costPerUnit: 2.00 },
-        { name: 'Pasta Noodles & Sauce', totalQuantity: 15, unit: 'kg', costPerUnit: 3.50 },
-        { name: 'Chicken Wings (Bulk)', totalQuantity: 20, unit: 'kg', costPerUnit: 5.00 },
-        { name: 'Chocolate Cake Portion', totalQuantity: 25, unit: 'units', costPerUnit: 2.00 },
-        { name: 'Fresh Lemons (Juice)', totalQuantity: 10, unit: 'kg', costPerUnit: 1.50 },
-      ]);
-
-      const invMap = {};
-      invItems.forEach((item) => {
-        invMap[item.name] = item._id.toString();
-      });
-
-      console.log('Seeding initial menu items...');
-      await MenuItem.insertMany([
-        { sku: 'KIT-BRG-01', name: 'Truffle Wagyu Burger', category: 'Mains', price: 18.99, recipe: { inventoryItemId: invMap['Wagyu Beef Patties'], quantityPerPortion: 1 } },
-        { sku: 'KIT-PST-01', name: 'Wild Mushroom Rigatoni', category: 'Mains', price: 16.50, recipe: { inventoryItemId: invMap['Pasta Noodles & Sauce'], quantityPerPortion: 0.25 } },
-        { sku: 'KIT-PZA-01', name: 'Wood-Fired Pizza', category: 'Mains', price: 14.99, recipe: { inventoryItemId: invMap['Pizza Dough & Cheese'], quantityPerPortion: 1 } },
-        { sku: 'BAR-BEER-01', name: 'Craft IPA Pint', category: 'Beverages', price: 7.50, recipe: { inventoryItemId: invMap['Craft IPA Keg'], quantityPerPortion: 0.5 } },
-        { sku: 'KIT-APP-01', name: 'Crispy French Fries', category: 'Starters', price: 6.50, recipe: { inventoryItemId: invMap['Potato Fries (Bulk)'], quantityPerPortion: 0.2 } },
-        { sku: 'KIT-APP-02', name: 'Spicy Buffalo Wings', category: 'Starters', price: 11.00, recipe: { inventoryItemId: invMap['Chicken Wings (Bulk)'], quantityPerPortion: 0.3 } },
-        { sku: 'DES-CAK-01', name: 'Lava Cake', category: 'Desserts', price: 8.50, recipe: { inventoryItemId: invMap['Chocolate Cake Portion'], quantityPerPortion: 1 } },
-        { sku: 'BAR-LEMO-01', name: 'Fresh Lemonade', category: 'Beverages', price: 4.50, recipe: { inventoryItemId: invMap['Fresh Lemons (Juice)'], quantityPerPortion: 0.15 } },
-        { sku: 'KIT-BRG-02', name: 'Classic Cheeseburger', category: 'Mains', price: 13.99, recipe: { inventoryItemId: invMap['Wagyu Beef Patties'], quantityPerPortion: 1 } },
-        { sku: 'KIT-APP-03', name: 'Loaded Cheese Fries', category: 'Starters', price: 8.99, recipe: { inventoryItemId: invMap['Potato Fries (Bulk)'], quantityPerPortion: 0.25 } },
-        { sku: 'DES-CAK-02', name: 'Brownie Sundae', category: 'Desserts', price: 7.99, recipe: { inventoryItemId: invMap['Chocolate Cake Portion'], quantityPerPortion: 1 } },
-        { sku: 'BAR-BEER-02', name: 'Draft Lager', category: 'Beverages', price: 6.00, recipe: { inventoryItemId: invMap['Craft IPA Keg'], quantityPerPortion: 0.5 } },
-      ]);
-    }
-
     const tblCount = await Table.countDocuments();
     if (tblCount === 0) {
       console.log('Seeding initial tables...');
@@ -96,13 +60,46 @@ async function seedInitialData() {
 
 // GET Menu & Inventory
 app.get('/api/menu', async (req, res) => {
-  const menuItems = await MenuItem.find();
-  res.json(menuItems);
+  try {
+    const menuItems = await MenuItem.find();
+    res.json(menuItems);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch menu' });
+  }
+});
+
+// CREATE NEW MENU ITEM IN MONGODB
+app.post('/api/menu', async (req, res) => {
+  try {
+    const { name, category, price, recipe, sku } = req.body;
+
+    if (!name || !category || price === undefined) {
+      return res.status(400).json({ message: 'Name, category, and price are required.' });
+    }
+
+    const newItem = new MenuItem({
+      name: name.trim(),
+      category: category.trim(),
+      price: parseFloat(price),
+      sku: sku || `SKU-${Date.now().toString().slice(-6)}`,
+      recipe: Array.isArray(recipe) ? recipe : recipe ? [recipe] : [],
+    });
+
+    const savedItem = await newItem.save();
+    res.status(201).json(savedItem);
+  } catch (err) {
+    console.error('Error creating menu item:', err);
+    res.status(500).json({ error: 'Failed to create menu item: ' + err.message });
+  }
 });
 
 app.get('/api/inventory', async (req, res) => {
-  const inventory = await Inventory.find();
-  res.json(inventory);
+  try {
+    const inventory = await Inventory.find();
+    res.json(inventory);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch inventory' });
+  }
 });
 
 // CREATE A NEW INVENTORY ITEM & LOG INITIAL STOCK MOVEMENT
@@ -117,7 +114,6 @@ app.post('/api/inventory', async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields (name, totalQuantity, or unit)' });
     }
 
-    // 1. Create and save the new inventory item safely with fallback values
     const newItem = new Inventory({
       name: name.trim(),
       totalQuantity: qty,
@@ -127,7 +123,6 @@ app.post('/api/inventory', async (req, res) => {
     
     const savedItem = await newItem.save();
 
-    // 2. Create the initial stock movement history log
     await StockHistory.create({
       itemId: savedItem._id,
       itemName: savedItem.name,
@@ -146,72 +141,161 @@ app.post('/api/inventory', async (req, res) => {
 
 // RESTAURANT TABLES CRUD
 app.get('/api/tables', async (req, res) => {
-  const tables = await Table.find();
-  res.json(tables);
+  try {
+    const tables = await Table.find();
+    res.json(tables);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch tables' });
+  }
 });
 
 app.post('/api/tables', async (req, res) => {
-  const newTable = new Table({
-    number: parseInt(req.body.number, 10),
-    status: 'available',
-    seats: parseInt(req.body.seats, 10) || 4,
-  });
-  await newTable.save();
-  res.status(201).json(newTable);
+  try {
+    const newTable = new Table({
+      number: parseInt(req.body.number, 10),
+      status: 'available',
+      seats: parseInt(req.body.seats, 10) || 4,
+    });
+    await newTable.save();
+    res.status(201).json(newTable);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create table' });
+  }
 });
 
 app.put('/api/tables/:id', async (req, res) => {
-  const updatedTable = await Table.findByIdAndUpdate(req.params.id, req.body, { new: true });
-  if (updatedTable) {
-    res.json(updatedTable);
-  } else {
-    res.status(404).json({ message: 'Table not found' });
+  try {
+    const updatedTable = await Table.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (updatedTable) {
+      res.json(updatedTable);
+    } else {
+      res.status(404).json({ message: 'Table not found' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update table' });
   }
 });
 
 app.delete('/api/tables/:id', async (req, res) => {
-  await Table.findByIdAndDelete(req.params.id);
-  res.json({ message: 'Table deleted successfully' });
+  try {
+    await Table.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Table deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete table' });
+  }
 });
 
 // ORDERS & PAYMENT
 app.get('/api/orders', async (req, res) => {
-  const orders = await Order.find();
-  res.json(orders);
-});
-
-app.post('/api/orders/save', async (req, res) => {
-  const { tableId, items } = req.body;
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const tax = subtotal * 0.08;
-  const total = subtotal + tax;
-
-  let existingOrder = await Order.findOne({ tableId, status: 'pending' });
-
-  if (existingOrder) {
-    existingOrder.items = items;
-    existingOrder.subtotal = subtotal;
-    existingOrder.tax = tax;
-    existingOrder.total = total;
-    existingOrder.remainingBalance = total;
-    await existingOrder.save();
-    res.json(existingOrder);
-  } else {
-    const newOrder = new Order({
-      tableId,
-      items,
-      status: 'pending',
-      subtotal,
-      tax,
-      total,
-      remainingBalance: total,
-    });
-    await newOrder.save();
-
-    await Table.findByIdAndUpdate(tableId, { status: 'occupied' });
-    res.status(201).json(newOrder);
+  try {
+    const orders = await Order.find();
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
+
+// --- ROBUST SAVE ORDER ENDPOINT ---
+app.post('/api/orders/save', async (req, res) => {
+  try {
+    const { tableId, items } = req.body;
+
+    if (!tableId) {
+      return res.status(400).json({ error: 'tableId is required' });
+    }
+
+    // 1. Resolve Table whether tableId is a Mongoose ObjectId or a Table Number
+    let table = null;
+    if (mongoose.Types.ObjectId.isValid(tableId)) {
+      table = await Table.findById(tableId);
+    }
+    if (!table && !isNaN(Number(tableId))) {
+      table = await Table.findOne({ number: Number(tableId) });
+    }
+
+    if (!table) {
+      return res.status(400).json({ error: `Table not found for identifier: ${tableId}` });
+    }
+
+    const validTableId = table._id;
+
+    // 2. Format and sanitize item details
+    const formattedItems = (items || []).map((item) => ({
+      menuItemId: String(item.menuItemId || item.id || item._id || ''),
+      name: item.name || 'Unnamed Item',
+      price: Number(item.price) || 0,
+      quantity: Number(item.quantity) || 1,
+    }));
+
+    const subtotal = formattedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const tax = subtotal * 0.08;
+    const total = subtotal + tax;
+
+    // 3. Find active pending order for this table
+    let existingOrder = await Order.findOne({ tableId: validTableId, status: 'pending' });
+
+    if (existingOrder) {
+      existingOrder.items = formattedItems;
+      existingOrder.subtotal = subtotal;
+      existingOrder.tax = tax;
+      existingOrder.total = total;
+      existingOrder.remainingBalance = total;
+      await existingOrder.save();
+      console.log(`[Order Save] Updated pending order ID: ${existingOrder._id} for Table ${table.number}`);
+      return res.json(existingOrder);
+    } else {
+      const newOrder = new Order({
+        tableId: validTableId,
+        items: formattedItems,
+        status: 'pending',
+        subtotal,
+        tax,
+        total,
+        remainingBalance: total,
+      });
+      await newOrder.save();
+
+      await Table.findByIdAndUpdate(validTableId, { status: 'occupied' });
+      console.log(`[Order Save] Created NEW pending order ID: ${newOrder._id} for Table ${table.number}`);
+      return res.status(201).json(newOrder);
+    }
+  } catch (err) {
+    console.error('SERVER ERROR DURING ORDER SAVE:', err);
+    return res.status(500).json({ error: 'Failed to save order: ' + err.message });
+  }
+});
+
+// Helper for deducting stock during checkout
+async function deductStockForOrder(order, performedByTag) {
+  const allMenuItems = await MenuItem.find();
+  for (const orderItem of order.items) {
+    const menuItem = allMenuItems.find(
+      (m) => m.id === orderItem.menuItemId || m._id.toString() === orderItem.menuItemId
+    );
+
+    if (menuItem && Array.isArray(menuItem.recipe)) {
+      for (const recipeIngredient of menuItem.recipe) {
+        if (!recipeIngredient.inventoryItemId) continue;
+
+        const invItem = await Inventory.findById(recipeIngredient.inventoryItemId);
+        if (invItem) {
+          const totalDeduction = recipeIngredient.quantityPerPortion * orderItem.quantity;
+          invItem.totalQuantity = Math.max(0, invItem.totalQuantity - totalDeduction);
+          await invItem.save();
+
+          await StockHistory.create({
+            itemId: invItem._id,
+            itemName: invItem.name,
+            quantity: -totalDeduction,
+            unit: invItem.unit,
+            performedBy: performedByTag,
+            description: `Auto-deducted for Order #${order._id.toString().slice(-4)}`,
+          });
+        }
+      }
+    }
+  }
+}
 
 // PAY BILL AND REDUCE INVENTORY STOCK
 app.post('/api/orders/:orderId/pay', async (req, res) => {
@@ -223,29 +307,7 @@ app.post('/api/orders/:orderId/pay', async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (order.status === 'paid') return res.status(400).json({ message: 'Order is already paid' });
 
-    // Deduct inventory stock
-    const allMenuItems = await MenuItem.find();
-    for (const orderItem of order.items) {
-      const menuItem = allMenuItems.find((m) => m.id === orderItem.menuItemId || m._id.toString() === orderItem.menuItemId);
-      if (menuItem && menuItem.recipe && menuItem.recipe.inventoryItemId) {
-        const invItem = await Inventory.findById(menuItem.recipe.inventoryItemId);
-        if (invItem) {
-          const totalDeduction = menuItem.recipe.quantityPerPortion * orderItem.quantity;
-          invItem.totalQuantity = Math.max(0, invItem.totalQuantity - totalDeduction);
-          await invItem.save();
-
-          // Log POS Sale deduction to history
-          await StockHistory.create({
-            itemId: invItem._id,
-            itemName: invItem.name,
-            quantity: -totalDeduction,
-            unit: invItem.unit,
-            performedBy: 'POS System',
-            description: `Auto-deducted for Order #${order._id.toString().slice(-4)}`,
-          });
-        }
-      }
-    }
+    await deductStockForOrder(order, 'POS System');
 
     order.status = 'paid';
     order.paymentMethod = paymentMethod;
@@ -272,29 +334,7 @@ app.post('/api/orders/:orderId/credit', async (req, res) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
-    // Deduct stock when adding to credit
-    const allMenuItems = await MenuItem.find();
-    for (const orderItem of order.items) {
-      const menuItem = allMenuItems.find((m) => m.id === orderItem.menuItemId || m._id.toString() === orderItem.menuItemId);
-      if (menuItem && menuItem.recipe && menuItem.recipe.inventoryItemId) {
-        const invItem = await Inventory.findById(menuItem.recipe.inventoryItemId);
-        if (invItem) {
-          const totalDeduction = menuItem.recipe.quantityPerPortion * orderItem.quantity;
-          invItem.totalQuantity = Math.max(0, invItem.totalQuantity - totalDeduction);
-          await invItem.save();
-
-          // Log Credit Order deduction to history
-          await StockHistory.create({
-            itemId: invItem._id,
-            itemName: invItem.name,
-            quantity: -totalDeduction,
-            unit: invItem.unit,
-            performedBy: 'POS System (Credit)',
-            description: `Auto-deducted for Credit Order #${order._id.toString().slice(-4)}`,
-          });
-        }
-      }
-    }
+    await deductStockForOrder(order, 'POS System (Credit)');
 
     order.status = 'credit';
     order.paymentMethod = 'credit';
@@ -324,10 +364,7 @@ app.post('/api/orders/credit/partial-pay', async (req, res) => {
 
     const query = {
       status: { $in: ['credit', 'unsettled'] },
-      $or: [
-        { customerPhone: customerPhone },
-        { customerName: customerName }
-      ]
+      $or: [{ customerPhone: customerPhone }, { customerName: customerName }],
     };
 
     const creditOrders = await Order.find(query).sort({ createdAt: 1 });
@@ -351,14 +388,14 @@ app.post('/api/orders/credit/partial-pay', async (req, res) => {
         order.paymentHistory.push({
           amount: currentBalance,
           note: note || 'Partial payment auto-settled order',
-          type: 'full'
+          type: 'full',
         });
       } else {
         order.remainingBalance = currentBalance - remainingToDeduct;
         order.paymentHistory.push({
           amount: remainingToDeduct,
           note: note || 'Partial payment received',
-          type: 'partial'
+          type: 'partial',
         });
         remainingToDeduct = 0;
       }
@@ -380,10 +417,7 @@ app.post('/api/orders/credit/full-settle', async (req, res) => {
 
     const query = {
       status: { $in: ['credit', 'unsettled'] },
-      $or: [
-        { customerPhone: customerPhone },
-        { customerName: customerName }
-      ]
+      $or: [{ customerPhone: customerPhone }, { customerName: customerName }],
     };
 
     const creditOrders = await Order.find(query);
@@ -396,7 +430,7 @@ app.post('/api/orders/credit/full-settle', async (req, res) => {
       order.paymentHistory.push({
         amount: remaining,
         note: 'Marked as Fully Settled',
-        type: 'full'
+        type: 'full',
       });
       await order.save();
     }
@@ -412,18 +446,14 @@ app.post('/api/orders/credit/full-settle', async (req, res) => {
 app.get('/api/credits', async (req, res) => {
   try {
     const creditOrders = await Order.find({
-      $or: [
-        { paymentMethod: 'credit' },
-        { status: { $in: ['credit', 'unsettled', 'settled'] } }
-      ]
+      $or: [{ paymentMethod: 'credit' }, { status: { $in: ['credit', 'unsettled', 'settled'] } }],
     });
 
     const customerMap = {};
 
     creditOrders.forEach((order) => {
-      const key = order.customerPhone && order.customerPhone !== 'N/A' 
-        ? order.customerPhone 
-        : order.customerName;
+      const key =
+        order.customerPhone && order.customerPhone !== 'N/A' ? order.customerPhone : order.customerName;
 
       if (!customerMap[key]) {
         customerMap[key] = {
@@ -435,7 +465,7 @@ app.get('/api/credits', async (req, res) => {
           originalAmount: 0,
           isFullySettled: true,
           notesHistory: [],
-          orderIds: []
+          orderIds: [],
         };
       }
 
@@ -469,19 +499,36 @@ app.get('/api/credits', async (req, res) => {
 
 // CANCEL / CLEAR PENDING ORDER FOR A TABLE
 app.delete('/api/orders/table/:tableId', async (req, res) => {
-  const { tableId } = req.params;
+  try {
+    const { tableId } = req.params;
+    let table = null;
 
-  await Order.deleteMany({ tableId, status: 'pending' });
-  await Table.findByIdAndUpdate(tableId, { status: 'available' });
+    if (mongoose.Types.ObjectId.isValid(tableId)) {
+      table = await Table.findById(tableId);
+    }
+    if (!table && !isNaN(Number(tableId))) {
+      table = await Table.findOne({ number: Number(tableId) });
+    }
 
-  res.json({ message: 'Pending order cancelled successfully' });
+    const targetTableId = table ? table._id : tableId;
+
+    await Order.deleteMany({ tableId: targetTableId, status: 'pending' });
+    if (table) {
+      table.status = 'available';
+      await table.save();
+    }
+
+    res.json({ message: 'Pending order cancelled successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to cancel pending order' });
+  }
 });
 
 // UPDATE INVENTORY (Restock or Deduct with History Logging)
 app.patch('/api/inventory/:id/restock', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const rawQty = req.body.quantity !== undefined ? req.body.quantity : req.body.addQuantity;
     const { performedBy, description } = req.body;
 
@@ -499,7 +546,6 @@ app.patch('/api/inventory/:id/restock', async (req, res) => {
     item.totalQuantity = (Number(item.totalQuantity) || 0) + qtyToChange;
     await item.save();
 
-    // Create Audit Log Entry
     await StockHistory.create({
       itemId: item._id,
       itemName: item.name,
@@ -529,10 +575,13 @@ app.get('/api/inventory/history', async (req, res) => {
 
 // DELETE SPECIFIC ORDER BY ID
 app.delete('/api/orders/:id', async (req, res) => {
-  await Order.findByIdAndDelete(req.params.id);
-  res.json({ message: 'Order deleted successfully' });
+  try {
+    await Order.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Order deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete order' });
+  }
 });
-
 
 // --- ATTENDANCE ENDPOINTS ---
 

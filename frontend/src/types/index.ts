@@ -3,7 +3,7 @@ export interface InventoryItem {
   _id?: string;
   name: string;
   totalQuantity: number;
-  unit: 'kg' | 'g' | 'liters' | 'units';
+  unit: 'kg' | 'g' | 'liters' | 'units' | string;
   costPerUnit: number;
 }
 
@@ -17,9 +17,9 @@ export interface MenuItem {
   _id?: string;
   sku?: string;
   name: string;
-  category: 'Mains' | 'Starters' | 'Beverages' | 'Desserts' | string;
+  category: string;
   price: number;
-  recipe?: RecipeItem[] | RecipeItem;
+  recipe?: RecipeItem[];
 }
 
 export interface Table {
@@ -36,6 +36,7 @@ export interface OrderItem {
   name: string;
   price: number;
   quantity: number;
+  recipe?: RecipeItem[];
 }
 
 export interface Order {

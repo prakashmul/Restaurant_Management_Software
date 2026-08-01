@@ -5,6 +5,13 @@ const orderItemSchema = new mongoose.Schema({
   name: { type: String, required: true },
   price: { type: Number, required: true },
   quantity: { type: Number, required: true, default: 1 },
+  // Optional snapshot of recipe used at time of order for inventory tracking
+  recipe: [
+    {
+      inventoryItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory' },
+      quantityPerPortion: { type: Number, required: true }
+    }
+  ]
 });
 
 const paymentLogSchema = new mongoose.Schema({
@@ -18,7 +25,11 @@ const orderSchema = new mongoose.Schema(
   {
     tableId: { type: mongoose.Schema.Types.ObjectId, ref: 'Table', required: true },
     items: [orderItemSchema],
-    status: { type: String, enum: ['pending', 'paid', 'credit', 'unsettled', 'settled', 'cancelled'], default: 'pending' },
+    status: {
+      type: String,
+      enum: ['pending', 'paid', 'credit', 'unsettled', 'settled', 'cancelled'],
+      default: 'pending'
+    },
     paymentMethod: { type: String, default: 'cash' },
     customerName: { type: String, default: '' },
     customerPhone: { type: String, default: '' },

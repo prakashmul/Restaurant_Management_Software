@@ -10,6 +10,14 @@ import Order from './models/Order.js';
 import Attendance from './models/Attendance.js';
 import User from './models/User.js';
 
+// --- INLINE MODEL FOR CATEGORY ---
+const categorySchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true, trim: true },
+  createdAt: { type: Date, default: Date.now },
+});
+
+const Category = mongoose.models.Category || mongoose.model('Category', categorySchema);
+
 // --- INLINE MODEL FOR STOCK HISTORY ---
 const stockHistorySchema = new mongoose.Schema({
   itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory', required: true },
@@ -51,12 +59,86 @@ async function seedInitialData() {
         { number: 4, status: 'available', seats: 6 },
       ]);
     }
+
+    const catCount = await Category.countDocuments();
+    if (catCount === 0) {
+      console.log('Seeding default categories...');
+      await Category.insertMany([
+        { name: 'Appetizer' },
+        { name: 'Main Course' },
+        { name: 'Dessert' },
+        { name: 'Beverages' },
+      ]);
+    }
   } catch (err) {
     console.error('Data seeding failed:', err);
   }
 }
 
 // --- API ENDPOINTS ---
+
+// CATEGORIES CRUD
+app.get('/api/categories', async (req, res) => {
+  try {
+    const categories = await Category.find().sort({ createdAt: 1 });
+    res.json(categories);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+});
+
+app.post('/api/categories', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Category name is required' });
+    }
+
+    const existingCat = await Category.findOne({ name: name.trim() });
+    if (existingCat) {
+      return res.status(200).json(existingCat);
+    }
+
+    const newCategory = new Category({ name: name.trim() });
+    const savedCat = await newCategory.save();
+    res.status(201).json(savedCat);
+  } catch (err) {
+    console.error('Error creating category:', err);
+    res.status(500).json({ error: 'Failed to create category: ' + err.message });
+  }
+});
+
+app.delete('/api/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    let targetCat = null;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      targetCat = await Category.findById(id);
+    }
+    if (!targetCat) {
+      targetCat = await Category.findOne({ name: id });
+    }
+
+    if (!targetCat) {
+      return res.status(404).json({ message: 'Category not found' });
+    }
+
+    // Check if category contains menu items before deleting
+    const linkedItemsCount = await MenuItem.countDocuments({ category: targetCat.name });
+    if (linkedItemsCount > 0) {
+      return res.status(400).json({
+        message: `Cannot delete category "${targetCat.name}" because it contains ${linkedItemsCount} menu item(s).`,
+      });
+    }
+
+    const deletedCat = await Category.findByIdAndDelete(targetCat._id);
+    res.json({ message: 'Category deleted successfully', category: deletedCat });
+  } catch (err) {
+    console.error('Error deleting category:', err);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
 
 // GET Menu & Inventory
 app.get('/api/menu', async (req, res) => {
@@ -77,9 +159,16 @@ app.post('/api/menu', async (req, res) => {
       return res.status(400).json({ message: 'Name, category, and price are required.' });
     }
 
+    // Auto-ensure category exists in Category collection
+    const categoryName = category.trim();
+    const catExists = await Category.findOne({ name: categoryName });
+    if (!catExists) {
+      await Category.create({ name: categoryName });
+    }
+
     const newItem = new MenuItem({
       name: name.trim(),
-      category: category.trim(),
+      category: categoryName,
       price: parseFloat(price),
       sku: sku || `SKU-${Date.now().toString().slice(-6)}`,
       recipe: Array.isArray(recipe) ? recipe : recipe ? [recipe] : [],
@@ -90,6 +179,18 @@ app.post('/api/menu', async (req, res) => {
   } catch (err) {
     console.error('Error creating menu item:', err);
     res.status(500).json({ error: 'Failed to create menu item: ' + err.message });
+  }
+});
+
+// DELETE MENU ITEM FROM MONGODB
+app.delete('/api/menu/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await MenuItem.findByIdAndDelete(id);
+    res.json({ message: 'Menu item deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting menu item:', err);
+    res.status(500).json({ error: 'Failed to delete menu item' });
   }
 });
 

@@ -10,6 +10,12 @@ const cleanId = (idOrObj: any): string => {
   return String(idOrObj._id || idOrObj.id || '');
 };
 
+export interface CategoryItem {
+  _id?: string;
+  id?: string;
+  name: string;
+}
+
 export interface CreditCustomer {
   id: string;
   name: string;
@@ -43,6 +49,13 @@ export interface AttendanceRecordPayload {
 }
 
 export const posApi = {
+  // Overview of all data in dashboard
+  fetchOrders: async () => {
+    const res = await fetch('http://localhost:5000/api/orders');
+    if (!res.ok) throw new Error('Failed to fetch orders');
+    return await res.json();
+  },
+
   // Menu & Inventory
   getMenu: () => API.get<MenuItem[]>('/menu').then((r) => r.data),
 
@@ -53,10 +66,15 @@ export const posApi = {
     recipe?: RecipeItem[];
   }) => API.post<MenuItem>('/menu', itemData).then((r) => r.data),
 
-  getCategories: () => API.get<string[]>('/categories').then((r) => r.data),
+  deleteMenuItem: (id: any) => API.delete(`/menu/${cleanId(id)}`).then((r) => r.data),
+
+  getCategories: () => API.get<CategoryItem[]>('/categories').then((r) => r.data),
 
   createCategory: (categoryName: string) =>
-    API.post<{ name: string }>('/categories', { name: categoryName }).then((r) => r.data),
+    API.post<CategoryItem>('/categories', { name: categoryName }).then((r) => r.data),
+
+  deleteCategory: (idOrName: any) =>
+    API.delete(`/categories/${cleanId(idOrName) || idOrName}`).then((r) => r.data),
 
   getInventory: () => API.get<InventoryItem[]>('/inventory').then((r) => r.data),
 
@@ -107,9 +125,10 @@ export const posApi = {
   },
 
   payOrder: (orderId: any, paymentMethod: string = 'cash') =>
-    API.post<{ message: string; inventory: InventoryItem[] }>(`/orders/${cleanId(orderId)}/pay`, {
-      paymentMethod,
-    }).then((r) => r.data),
+    API.post<{ message: string; order: Order; inventory: InventoryItem[] }>(
+      `/orders/${cleanId(orderId)}/pay`,
+      { paymentMethod }
+    ).then((r) => r.data),
 
   deleteOrder: (orderId: any) => API.delete(`/orders/${cleanId(orderId)}`).then((r) => r.data),
 

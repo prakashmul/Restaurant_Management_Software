@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, X, Utensils, Package } from 'lucide-react';
+import { Plus, X, Utensils, Package, Trash2 } from 'lucide-react';
 import type { MenuItem, InventoryItem } from '../types';
 import { posApi } from '../api/posApi';
 
@@ -57,6 +57,19 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
       onItemCreated();
     } catch (err) {
       alert('Failed to add menu item');
+    }
+  };
+
+  const handleDeleteItem = async (e: React.MouseEvent, itemId: string) => {
+    e.stopPropagation(); // Prevents adding the item to cart when clicking delete
+    if (!confirm('Are you sure you want to delete this menu item?')) return;
+
+    try {
+      await posApi.deleteMenuItem(itemId);
+      onItemCreated(); // Refresh the list from backend
+    } catch (err) {
+      console.error('Failed to delete menu item:', err);
+      alert('Failed to delete menu item');
     }
   };
 
@@ -203,23 +216,36 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
             </form>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {menuItems.map((item) => (
-                <div
-                  key={item._id || item.id}
-                  onClick={() => handleSelectItem(item)}
-                  className="bg-slate-950 border border-slate-800 hover:border-indigo-500/50 p-3 rounded-xl cursor-pointer transition-all flex flex-col justify-between group hover:bg-slate-800/40"
-                >
-                  <h4 className="font-semibold text-xs text-slate-200 group-hover:text-indigo-300 line-clamp-2">
-                    {item.name}
-                  </h4>
-                  <div className="mt-3 flex justify-between items-center">
-                    <span className="font-mono text-xs text-slate-400">Rs. {(item.price || 0).toFixed(2)}</span>
-                    <span className="bg-indigo-600 text-white p-1 rounded-md text-[10px]">
-                      <Plus className="w-3 h-3" />
-                    </span>
+              {menuItems.map((item) => {
+                const itemId = (item._id || item.id || '') as string;
+                return (
+                  <div
+                    key={itemId}
+                    onClick={() => handleSelectItem(item)}
+                    className="bg-slate-950 border border-slate-800 hover:border-indigo-500/50 p-3 rounded-xl cursor-pointer transition-all flex flex-col justify-between group hover:bg-slate-800/40 relative"
+                  >
+                    <div className="flex justify-between items-start gap-1">
+                      <h4 className="font-semibold text-xs text-slate-200 group-hover:text-indigo-300 line-clamp-2">
+                        {item.name}
+                      </h4>
+                      <button
+                        onClick={(e) => handleDeleteItem(e, itemId)}
+                        title="Delete item"
+                        className="text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition p-1 rounded hover:bg-rose-500/10"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="mt-3 flex justify-between items-center">
+                      <span className="font-mono text-xs text-slate-400">Rs. {(item.price || 0).toFixed(2)}</span>
+                      <span className="bg-indigo-600 text-white p-1 rounded-md text-[10px]">
+                        <Plus className="w-3 h-3" />
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

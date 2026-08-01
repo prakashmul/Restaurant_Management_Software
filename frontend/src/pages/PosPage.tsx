@@ -35,24 +35,31 @@ export const PosPage = () => {
 
   const loadData = async () => {
     try {
-      const [tbls, mnu, ords, inv] = await Promise.all([
+      const [tbls, mnu, ords, inv, cats] = await Promise.all([
         posApi.getTables(),
         posApi.getMenu(),
         posApi.getOrders(),
         posApi.getInventory(),
+        posApi.getCategories().catch(() => []),
       ]);
+
       const fetchedTables = tbls || [];
       const fetchedOrders = ords || [];
+      const fetchedMenu = mnu || [];
 
       setTables(fetchedTables);
-      setMenu(mnu || []);
+      setMenu(fetchedMenu);
       setOrders(fetchedOrders);
       setInventoryList(inv || []);
 
-      const existingCategories = Array.from(new Set((mnu || []).map((item) => item.category)));
-      if (existingCategories.length > 0) {
-        setCategories(existingCategories);
-      }
+      // Parse backend categories (handles string or CategoryItem objects)
+      const parsedCats = (cats || []).map((c: any) => (typeof c === 'string' ? c : c.name)).filter(Boolean);
+
+      // Derive categories from existing menu items while preserving backend categories
+      const fetchedMenuCats = fetchedMenu.map((item) => item.category);
+      const combined = Array.from(new Set([...parsedCats, ...fetchedMenuCats]));
+
+      setCategories(combined.length > 0 ? combined : ['Appetizer']);
 
       // Sync selectedTable reference with newly loaded tables
       if (fetchedTables.length > 0) {
@@ -78,7 +85,6 @@ export const PosPage = () => {
       const activeOrder = orders.find((o) => {
         const orderTableId = getId(o.tableId);
         const isMatchingTable = orderTableId === selectedId;
-        // Cast status to string to satisfy TypeScript strict equality checks
         const statusStr = o.status as string;
         const isActiveStatus = statusStr === 'pending' || statusStr === 'unsettled' || statusStr === 'open';
         return isMatchingTable && isActiveStatus;
@@ -88,14 +94,47 @@ export const PosPage = () => {
     }
   }, [selectedTable, orders]);
 
-  const handleCreateCategory = (e: React.FormEvent) => {
+  const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCategoryName.trim()) return;
-    if (!categories.includes(newCategoryName)) {
-      setCategories((prev) => [...prev, newCategoryName.trim()]);
+    const formattedCategory = newCategoryName.trim();
+    if (!formattedCategory) return;
+
+    try {
+      await posApi.createCategory(formattedCategory);
+      if (!categories.includes(formattedCategory)) {
+        setCategories((prev) => [...prev, formattedCategory]);
+      }
+      setNewCategoryName('');
+      setShowAddCategoryModal(false);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to create category:', err);
+      alert('Failed to create category on server.');
     }
-    setNewCategoryName('');
-    setShowAddCategoryModal(false);
+  };
+
+  const handleDeleteCategory = async (catToDelete: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const itemsInCategory = menu.filter((item) => item.category === catToDelete);
+
+    if (itemsInCategory.length > 0) {
+      alert(
+        `Cannot delete category "${catToDelete}" because it contains ${itemsInCategory.length} item(s). Please delete or move those items first.`
+      );
+      return;
+    }
+
+    if (confirm(`Are you sure you want to remove the category "${catToDelete}"?`)) {
+      try {
+        await posApi.deleteCategory(catToDelete);
+        setCategories((prev) => prev.filter((c) => c !== catToDelete));
+        await loadData();
+      } catch (err) {
+        console.error('Failed to delete category:', err);
+        // Fallback UI removal if route handles deletion implicitly
+        setCategories((prev) => prev.filter((c) => c !== catToDelete));
+      }
+    }
   };
 
   const handleTableCardClick = (tbl: Table) => {
@@ -119,6 +158,8 @@ export const PosPage = () => {
 
   const handleDeleteTable = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this table?')) return;
+
     try {
       await posApi.deleteTable(id);
       setTables((prev) => prev.filter((t) => getId(t) !== id));
@@ -286,12 +327,21 @@ export const PosPage = () => {
                 <div
                   key={cat}
                   onClick={() => setSelectedCategoryModal(cat)}
-                  className="bg-slate-950 border border-slate-800 hover:border-indigo-500 p-4 rounded-xl cursor-pointer transition-all flex flex-col justify-between group"
+                  className="bg-slate-950 border border-slate-800 hover:border-indigo-500 p-4 rounded-xl cursor-pointer transition-all flex flex-col justify-between group relative"
                 >
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
-                      Category
-                    </span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
+                        Category
+                      </span>
+                      <button
+                        onClick={(e) => handleDeleteCategory(cat, e)}
+                        title="Delete Category"
+                        className="text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition p-1 rounded hover:bg-rose-500/10"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <h3 className="font-bold text-base text-slate-100 mt-1 group-hover:text-indigo-300 transition">
                       {cat}
                     </h3>
@@ -344,14 +394,14 @@ export const PosPage = () => {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => updateQty(getId(item.menuItemId), -1)}
-                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300"
+                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
                     >
                       -
                     </button>
                     <span className="text-xs font-mono font-bold w-4 text-center">{item.quantity}</span>
                     <button
                       onClick={() => updateQty(getId(item.menuItemId), 1)}
-                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300"
+                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
                     >
                       +
                     </button>
@@ -372,14 +422,14 @@ export const PosPage = () => {
             <button
               onClick={handleSaveOrder}
               disabled={!selectedTable || currentCart.length === 0}
-              className="py-2.5 bg-slate-800 disabled:opacity-40 text-slate-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5"
+              className="py-2.5 bg-slate-800 disabled:opacity-40 text-slate-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 hover:bg-slate-700 transition"
             >
               <CheckCircle2 className="w-3.5 h-3.5" /> Save
             </button>
             <button
               onClick={handlePayBill}
               disabled={!selectedTable || currentCart.length === 0}
-              className="py-2.5 bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5"
+              className="py-2.5 bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 hover:bg-emerald-500 transition"
             >
               <CreditCard className="w-3.5 h-3.5" /> Pay
             </button>

@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { MapPin, Clock, History, CheckCircle2, XCircle, Coffee, Play, Printer, Calendar } from 'lucide-react';
+import { 
+  MapPin, Clock, History, CheckCircle2, XCircle, Coffee, 
+  Play, Printer, Calendar, DollarSign, TrendingUp, ShoppingBag, CreditCard 
+} from 'lucide-react';
 import { posApi } from '../api/posApi';
 
 const RESTAURANT_LOCATION = {
@@ -34,33 +37,43 @@ interface AttendanceRecord {
   _id?: string;
   id?: string;
   employeeName: string;
-  date?: string; // Format expected: YYYY-MM-DD
+  date?: string;
   checkInTime: string;
   checkOutTime: string | null;
-  duration: string; // "HH:MM:SS"
+  duration: string;
   status: 'Completed' | 'Auto-Checked Out' | 'Active';
 }
 
+interface OrderRecord {
+  _id: string;
+  total: number;
+  status: 'pending' | 'paid' | 'credit' | 'unsettled' | 'settled' | 'cancelled';
+  remainingBalance?: number;
+  createdAt?: string;
+}
+
 export const DashboardPage: React.FC = () => {
-  const currentUser = useMemo(() => {
-    const possibleKeys = ['user', 'currentUser', 'authUser', 'username', 'profile', 'session', 'userData'];
+  // Retrieve current user object and role from localStorage
+  const currentUserObj = useMemo(() => {
+    const possibleKeys = ['currentUser', 'user', 'authUser', 'session', 'userData'];
 
     for (const key of possibleKeys) {
       const stored = localStorage.getItem(key);
       if (stored) {
         try {
-          const parsed = JSON.parse(stored);
-          const name = parsed.name || parsed.username || parsed.fullName || parsed.displayName || parsed.email || parsed.user?.name;
-          if (name) return name;
+          return JSON.parse(stored);
         } catch (_e) {
           if (typeof stored === 'string' && stored.trim().length > 0) {
-            return stored.replace(/^"|"$/g, '');
+            return { name: stored.replace(/^"|"$/g, ''), role: 'Staff' };
           }
         }
       }
     }
-    return 'Current Employee';
+    return { name: 'Current Employee', role: 'Staff' };
   }, []);
+
+  const currentUser = currentUserObj?.name || 'Current Employee';
+  const isOwner = currentUserObj?.role?.toLowerCase() === 'owner';
 
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
@@ -83,9 +96,60 @@ export const DashboardPage: React.FC = () => {
   const [selectedRecordForPrint, setSelectedRecordForPrint] = useState<AttendanceRecord | null>(null);
   const [isBulkPrint, setIsBulkPrint] = useState(false);
 
-  // Date Filter States
+  // Filter States
   const [startDateFilter, setStartDateFilter] = useState('');
   const [endDateFilter, setEndDateFilter] = useState('');
+
+  // Dashboard Stats State
+  const [orders, setOrders] = useState<OrderRecord[]>([]);
+
+  const fetchDashboardData = async () => {
+    try {
+      if (posApi.fetchOrders) {
+        const orderData = await posApi.fetchOrders();
+        if (Array.isArray(orderData)) {
+          setOrders(orderData);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch dashboard order data', err);
+    }
+  };
+
+  useEffect(() => {
+    if (isOwner) {
+      fetchDashboardData();
+    }
+  }, [isOwner]);
+
+  // Compute key KPI metrics
+  const dashboardStats = useMemo(() => {
+    let grossSales = 0;
+    let netPaidSales = 0;
+    let creditOwed = 0;
+    let totalOrdersCount = orders.length;
+
+    orders.forEach((order) => {
+      if (order.status === 'cancelled') return;
+
+      grossSales += order.total || 0;
+
+      if (order.status === 'paid' || order.status === 'settled') {
+        netPaidSales += order.total || 0;
+      }
+
+      if (order.status === 'credit' || order.status === 'unsettled') {
+        creditOwed += order.remainingBalance ?? order.total ?? 0;
+      }
+    });
+
+    return {
+      grossSales,
+      netPaidSales,
+      creditOwed,
+      totalOrdersCount,
+    };
+  }, [orders]);
 
   useEffect(() => {
     activeSessionStartRef.current = activeSessionStart;
@@ -125,13 +189,13 @@ export const DashboardPage: React.FC = () => {
     try {
       const data = await posApi.fetchAttendanceHistory();
       if (Array.isArray(data)) {
-        // Map data and filter to only include records belonging to the current logged-in user
         const processedData = data
           .map((item: any) => ({
             ...item,
             date: item.date || item.checkInDate || (item.createdAt ? item.createdAt.split('T')[0] : new Date().toISOString().split('T')[0])
           }))
-          .filter((item: any) => item.employeeName === currentUser); // <-- Restricts view to only the current user
+          // OWNER sees ALL records; STAFF sees ONLY their OWN records
+          .filter((item: any) => isOwner || item.employeeName === currentUser);
 
         setAttendanceHistory(processedData);
       }
@@ -142,7 +206,7 @@ export const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     loadHistory();
-  }, []);
+  }, [isOwner, currentUser]);
 
   const handleCheckOut = useCallback(async (
     statusReason: 'Completed' | 'Auto-Checked Out' = 'Completed',
@@ -382,7 +446,7 @@ export const DashboardPage: React.FC = () => {
   const filteredHistory = useMemo(() => {
     return attendanceHistory.filter((record) => {
       if (!startDateFilter && !endDateFilter) return true;
-      if (!record.date) return false; // Exclude items without a date if a filter is active
+      if (!record.date) return false;
       if (startDateFilter && record.date < startDateFilter) return false;
       if (endDateFilter && record.date > endDateFilter) return false;
       return true;
@@ -403,6 +467,7 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6 bg-slate-950 text-slate-100 min-h-screen">
+      {/* Printable Receipt Section */}
       {selectedRecordForPrint && (
         <div id="printable-receipt" className="hidden print:block font-mono text-black p-4 bg-white w-[320px] mx-auto text-xs leading-tight">
           <div className="text-center space-y-0.5 mb-3 border-b border-black pb-2">
@@ -478,6 +543,83 @@ export const DashboardPage: React.FC = () => {
         </div>
       )}
 
+      {/* ========================================================= */}
+      {/* RESTAURANT OVERVIEW - OWNER ONLY                           */}
+      {/* ========================================================= */}
+      {isOwner && (
+        <div className="print:hidden space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-white flex items-center gap-2">
+                <TrendingUp className="w-6 h-6 text-indigo-400" /> Restaurant Overview
+              </h1>
+              <p className="text-xs text-slate-400">Real-time performance summary and metrics</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1: Gross Sales */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-400">Gross Sales</p>
+                <h3 className="text-2xl font-bold text-white mt-1">
+                  Rs. {dashboardStats.grossSales.toLocaleString()}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">Total menu items billed</p>
+              </div>
+              <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl">
+                <DollarSign className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Card 2: Net Revenue */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-400">Paid Revenue</p>
+                <h3 className="text-2xl font-bold text-emerald-400 mt-1">
+                  Rs. {dashboardStats.netPaidSales.toLocaleString()}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">Fully collected payments</p>
+              </div>
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Card 3: Total Orders */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-400">Total Orders</p>
+                <h3 className="text-2xl font-bold text-white mt-1">
+                  {dashboardStats.totalOrdersCount}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">Completed & active orders</p>
+              </div>
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl">
+                <ShoppingBag className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Card 4: Credit Balance */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-400">Pending Credit Owed</p>
+                <h3 className="text-2xl font-bold text-amber-400 mt-1">
+                  Rs. {dashboardStats.creditOwed.toLocaleString()}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">Customer ledger balance</p>
+              </div>
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl">
+                <CreditCard className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* STAFF ATTENDANCE TRACKER COMPONENT                         */}
+      {/* ========================================================= */}
       <div className="print:hidden bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div>
@@ -571,11 +713,16 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      {/* ========================================================= */}
+      {/* ATTENDANCE HISTORY LOG                                    */}
+      {/* ========================================================= */}
       <div className="print:hidden bg-slate-900 border border-slate-800 rounded-2xl p-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-2">
             <History className="w-5 h-5 text-indigo-400" />
-            <h3 className="text-md font-semibold text-white">Attendance History</h3>
+            <h3 className="text-md font-semibold text-white">
+              {isOwner ? 'All Employees Attendance History' : 'My Attendance History'}
+            </h3>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -618,7 +765,7 @@ export const DashboardPage: React.FC = () => {
             <thead className="bg-slate-950 text-slate-300 uppercase text-xs">
               <tr>
                 <th className="px-4 py-3 rounded-l-xl">Employee</th>
-                <th className="px-4 py-3">Date</th> {/* Added Date Column */}
+                <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Check In</th>
                 <th className="px-4 py-3">Check Out</th>
                 <th className="px-4 py-3">Duration</th>
@@ -637,7 +784,7 @@ export const DashboardPage: React.FC = () => {
                 filteredHistory.map((record, index) => (
                   <tr key={record._id || record.id || `record-${index}`} className="hover:bg-slate-800/30">
                     <td className="px-4 py-3 text-white font-medium">{record.employeeName}</td>
-                    <td className="px-4 py-3 text-slate-300">{record.date || '--'}</td> {/* Render Date Value */}
+                    <td className="px-4 py-3 text-slate-300">{record.date || '--'}</td>
                     <td className="px-4 py-3">{record.checkInTime}</td>
                     <td className="px-4 py-3">{record.checkOutTime || '--'}</td>
                     <td className="px-4 py-3 font-mono text-slate-300">{record.duration}</td>

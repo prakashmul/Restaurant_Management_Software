@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Package, PlusCircle, History, User, FileText, ArrowUpRight, ArrowDownRight, X, Printer, Calendar } from 'lucide-react';
 import { posApi } from '../api/posApi';
 import type { InventoryItem } from '../types';
@@ -16,6 +16,23 @@ type StockHistoryLog = {
 };
 
 export const InventoryPage = () => {
+  // Check if current user has the Owner role from localStorage
+  const isOwner = useMemo(() => {
+    const possibleKeys = ['currentUser', 'user', 'authUser', 'session', 'userData'];
+    for (const key of possibleKeys) {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          return parsed?.role?.toLowerCase() === 'owner';
+        } catch (_e) {
+          // If scalar string, treat as staff by default
+        }
+      }
+    }
+    return false;
+  }, []);
+
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [history, setHistory] = useState<StockHistoryLog[]>([]);
 
@@ -57,12 +74,14 @@ export const InventoryPage = () => {
 
   const loadAllData = () => {
     loadInventory();
-    loadHistory();
+    if (isOwner) {
+      loadHistory();
+    }
   };
 
   useEffect(() => {
     loadAllData();
-  }, []);
+  }, [isOwner]);
 
   const handleRestock = async (item: InventoryItem) => {
     const itemId = item._id || item.id || '';
@@ -145,7 +164,7 @@ export const InventoryPage = () => {
     }
   };
 
-  // --- Filtered History Logic ---
+  // Filtered History Logic
   const filteredHistory = history.filter((log) => {
     if (!log.createdAt) return true;
     
@@ -163,7 +182,7 @@ export const InventoryPage = () => {
     return true;
   });
 
-  // --- Print / Save PDF Handler ---
+  // Print / Save PDF Handler
   const handlePrintOrSavePDF = () => {
     const printStyle = document.createElement('style');
     printStyle.id = 'print-style';
@@ -315,116 +334,120 @@ export const InventoryPage = () => {
         </div>
       </div>
 
-      {/* History Log Panel */}
-      <div id="printable-history-log" ref={historyRef} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="p-4 bg-slate-950/40 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <History className="w-5 h-5 text-indigo-400" />
-            <h2 className="text-base font-semibold text-slate-200">Stock Movement History Log</h2>
-          </div>
-          
-          {/* Main Bar Filter Controls & Print Button */}
-          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-            <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5">
-              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="text-[11px] text-slate-400">Filter:</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent text-[11px] text-slate-200 focus:outline-none"
-              />
-              <span className="text-[11px] text-slate-600">to</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent text-[11px] text-slate-200 focus:outline-none"
-              />
-              {(startDate || endDate) && (
+      {/* ========================================================= */}
+      {/* STOCK MOVEMENT HISTORY LOG - OWNER ONLY                  */}
+      {/* ========================================================= */}
+      {isOwner && (
+        <div id="printable-history-log" ref={historyRef} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          <div className="p-4 bg-slate-950/40 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <History className="w-5 h-5 text-indigo-400" />
+              <h2 className="text-base font-semibold text-slate-200">Stock Movement History Log</h2>
+            </div>
+            
+            {/* Main Bar Filter Controls & Print Button */}
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+              <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5">
+                <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="text-[11px] text-slate-400">Filter:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-transparent text-[11px] text-slate-200 focus:outline-none"
+                />
+                <span className="text-[11px] text-slate-600">to</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-transparent text-[11px] text-slate-200 focus:outline-none"
+                />
+                {(startDate || endDate) && (
+                  <button
+                    onClick={() => { setStartDate(''); setEndDate(''); }}
+                    className="text-[10px] text-indigo-400 hover:underline ml-1"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              <span className="text-xs text-slate-500">
+                {filteredHistory.length} {filteredHistory.length === 1 ? 'entry' : 'entries'}
+              </span>
+
+              {/* Direct Print / Save as PDF Button */}
+              <div id="print-button-container">
                 <button
-                  onClick={() => { setStartDate(''); setEndDate(''); }}
-                  className="text-[10px] text-indigo-400 hover:underline ml-1"
+                  onClick={handlePrintOrSavePDF}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition shadow"
                 >
-                  Clear
+                  <Printer className="w-3.5 h-3.5" />
+                  Print / Save PDF
                 </button>
-              )}
-            </div>
-
-            <span className="text-xs text-slate-500">
-              {filteredHistory.length} {filteredHistory.length === 1 ? 'entry' : 'entries'}
-            </span>
-
-            {/* Direct Print / Save as PDF Button */}
-            <div id="print-button-container">
-              <button
-                onClick={handlePrintOrSavePDF}
-                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition shadow"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                Print / Save PDF
-              </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-300">
-            <thead className="bg-slate-950/60 uppercase text-[11px] text-slate-400 border-b border-slate-800">
-              <tr>
-                <th className="p-4">Date & Time</th>
-                <th className="p-4">Item</th>
-                <th className="p-4">Adjustment</th>
-                <th className="p-4">Performed By</th>
-                <th className="p-4">Reason / Description</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {filteredHistory.length === 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-300">
+              <thead className="bg-slate-950/60 uppercase text-[11px] text-slate-400 border-b border-slate-800">
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-500 italic">
-                    No stock movement history found for the selected range.
-                  </td>
+                  <th className="p-4">Date & Time</th>
+                  <th className="p-4">Item</th>
+                  <th className="p-4">Adjustment</th>
+                  <th className="p-4">Performed By</th>
+                  <th className="p-4">Reason / Description</th>
                 </tr>
-              ) : (
-                filteredHistory.map((log, index) => {
-                  const isAddition = log.quantity > 0;
-                  return (
-                    <tr key={log._id || log.id || index} className="hover:bg-slate-800/40 transition">
-                      <td className="p-4 text-xs font-mono text-slate-400 whitespace-nowrap">
-                        {log.createdAt ? new Date(log.createdAt).toLocaleString() : 'N/A'}
-                      </td>
-                      <td className="p-4 font-semibold text-slate-200">{log.itemName}</td>
-                      <td className="p-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                            isAddition
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                          }`}
-                        >
-                          {isAddition ? (
-                            <ArrowUpRight className="w-3.5 h-3.5" />
-                          ) : (
-                            <ArrowDownRight className="w-3.5 h-3.5" />
-                          )}
-                          {isAddition ? `+${log.quantity}` : log.quantity} {log.unit}
-                        </span>
-                      </td>
-                      <td className="p-4 text-slate-300 font-medium">
-                        {log.performedBy || 'Anonymous'}
-                      </td>
-                      <td className="p-4 text-slate-400 text-xs italic">
-                        {log.description || '-'}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {filteredHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-slate-500 italic">
+                      No stock movement history found for the selected range.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredHistory.map((log, index) => {
+                    const isAddition = log.quantity > 0;
+                    return (
+                      <tr key={log._id || log.id || index} className="hover:bg-slate-800/40 transition">
+                        <td className="p-4 text-xs font-mono text-slate-400 whitespace-nowrap">
+                          {log.createdAt ? new Date(log.createdAt).toLocaleString() : 'N/A'}
+                        </td>
+                        <td className="p-4 font-semibold text-slate-200">{log.itemName}</td>
+                        <td className="p-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                              isAddition
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                            }`}
+                          >
+                            {isAddition ? (
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            ) : (
+                              <ArrowDownRight className="w-3.5 h-3.5" />
+                            )}
+                            {isAddition ? `+${log.quantity}` : log.quantity} {log.unit}
+                          </span>
+                        </td>
+                        <td className="p-4 text-slate-300 font-medium">
+                          {log.performedBy || 'Anonymous'}
+                        </td>
+                        <td className="p-4 text-slate-400 text-xs italic">
+                          {log.description || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Add Ingredient Modal */}
       {isAddModalOpen && (

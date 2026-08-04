@@ -31,6 +31,11 @@ const orderSchema = new mongoose.Schema(
       default: 'pending'
     },
     paymentMethod: { type: String, default: 'cash' },
+    // customerId is the source of truth for grouping credit orders by
+    // customer; customerName/customerPhone remain as a denormalized
+    // snapshot for display (receipts, order history) so nothing downstream
+    // has to join against Customer just to render a name.
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', default: null },
     customerName: { type: String, default: '' },
     customerPhone: { type: String, default: '' },
     subtotal: { type: Number, default: 0 },
@@ -43,5 +48,19 @@ const orderSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Enforces "one pending order per table" at the database level, so two
+// concurrent save-order requests for the same table can't both succeed —
+// one will hit a duplicate-key error, which the route handler retries as an update.
+orderSchema.index(
+  { tableId: 1, status: 1 },
+  { unique: true, partialFilterExpression: { status: 'pending' } }
+);
+
+// The credit ledger groups by customerId when available, falling back to
+// these for orders that predate the Customer migration (see server.js).
+orderSchema.index({ customerId: 1 });
+orderSchema.index({ customerPhone: 1 });
+orderSchema.index({ customerName: 1 });
 
 export default mongoose.model('Order', orderSchema);

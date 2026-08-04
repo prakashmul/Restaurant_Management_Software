@@ -13,6 +13,8 @@ const attendanceSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+attendanceSchema.index({ createdAt: -1 });
+
 const Attendance = mongoose.models.Attendance || mongoose.model('Attendance', attendanceSchema);
 
 export default Attendance;

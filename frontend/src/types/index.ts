@@ -26,7 +26,7 @@ export interface Table {
   id?: string;
   _id?: string;
   number: number;
-  status: 'available' | 'occupied' | 'reserved' | 'free';
+  status: 'available' | 'occupied';
   seats: number;
 }
 

@@ -1,7 +1,34 @@
 import axios from 'axios';
 import type { MenuItem, Table, Order, InventoryItem, RecipeItem } from '../types';
 
-const API = axios.create({ baseURL: 'http://localhost:5000/api' });
+export const API_ROOT = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+export const API_BASE_URL = `${API_ROOT}/api`;
+
+const API = axios.create({ baseURL: API_BASE_URL });
+
+// Attach the signed-in user's JWT to every request.
+API.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// A 401 means the token is missing/expired — clear the stale session and
+// send the user back to the login screen instead of failing silently.
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('currentUser');
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Helper function to safely extract plain ID string
 const cleanId = (idOrObj: any): string => {
@@ -51,9 +78,8 @@ export interface AttendanceRecordPayload {
 export const posApi = {
   // Overview of all data in dashboard
   fetchOrders: async () => {
-    const res = await fetch('http://localhost:5000/api/orders');
-    if (!res.ok) throw new Error('Failed to fetch orders');
-    return await res.json();
+    const res = await API.get('/orders');
+    return res.data;
   },
 
   // Menu & Inventory
@@ -124,17 +150,29 @@ export const posApi = {
     }).then((r) => r.data);
   },
 
-  payOrder: (orderId: any, paymentMethod: string = 'cash') =>
-    API.post<{ message: string; order: Order; inventory: InventoryItem[] }>(
-      `/orders/${cleanId(orderId)}/pay`,
-      { paymentMethod }
-    ).then((r) => r.data),
+  // Idempotency-Key is derived from the orderId itself: paying a given order
+  // is one logical operation no matter how many times a dropped connection
+  // makes the client retry it, so the key must stay stable across retries.
+  payOrder: (orderId: any, paymentMethod: string = 'cash') => {
+    const id = cleanId(orderId);
+    return API.post<{ message: string; order: Order; inventory: InventoryItem[] }>(
+      `/orders/${id}/pay`,
+      { paymentMethod },
+      { headers: { 'Idempotency-Key': `pay:${id}` } }
+    ).then((r) => r.data);
+  },
 
   deleteOrder: (orderId: any) => API.delete(`/orders/${cleanId(orderId)}`).then((r) => r.data),
 
   // Credit Ledger Integration
-  processFullCredit: (orderId: any, customerName: string, customerPhone: string) =>
-    API.post(`/orders/${cleanId(orderId)}/credit`, { customerName, customerPhone }).then((r) => r.data),
+  processFullCredit: (orderId: any, customerName: string, customerPhone: string) => {
+    const id = cleanId(orderId);
+    return API.post(
+      `/orders/${id}/credit`,
+      { customerName, customerPhone },
+      { headers: { 'Idempotency-Key': `credit:${id}` } }
+    ).then((r) => r.data);
+  },
 
   getCreditLedger: () => API.get<CreditCustomer[]>('/credits').then((r) => r.data),
 

@@ -23,6 +23,8 @@ const paymentLogSchema = new mongoose.Schema({
 
 const orderSchema = new mongoose.Schema(
   {
+    restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant', required: true },
+    locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', required: true },
     tableId: { type: mongoose.Schema.Types.ObjectId, ref: 'Table', required: true },
     items: [orderItemSchema],
     status: {
@@ -53,14 +55,14 @@ const orderSchema = new mongoose.Schema(
 // concurrent save-order requests for the same table can't both succeed —
 // one will hit a duplicate-key error, which the route handler retries as an update.
 orderSchema.index(
-  { tableId: 1, status: 1 },
+  { restaurantId: 1, tableId: 1, status: 1 },
   { unique: true, partialFilterExpression: { status: 'pending' } }
 );
 
 // The credit ledger groups by customerId when available, falling back to
 // these for orders that predate the Customer migration (see server.js).
-orderSchema.index({ customerId: 1 });
-orderSchema.index({ customerPhone: 1 });
-orderSchema.index({ customerName: 1 });
+orderSchema.index({ restaurantId: 1, locationId: 1, customerId: 1 });
+orderSchema.index({ restaurantId: 1, locationId: 1, customerPhone: 1 });
+orderSchema.index({ restaurantId: 1, locationId: 1, customerName: 1 });
 
 export default mongoose.model('Order', orderSchema);

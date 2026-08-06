@@ -16,6 +16,7 @@ import {
   Split,
 } from 'lucide-react';
 import type { Table, Order } from '../../types';
+import { useAuth } from '../../auth/AuthContext';
 
 interface TableDetailModalProps {
   table: Table;
@@ -38,6 +39,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   onPayOrder,
   onVoidOrder,
 }) => {
+  const { currentRestaurant, currentLocation } = useAuth();
   const orderId = order?._id || order?.id || '';
   const tableId = table._id || table.id || '';
 
@@ -518,14 +520,14 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
       <div id="printable-receipt" className="hidden">
         <div className="receipt-container">
           <div className="header">
-            <img 
-              src='/assets/Logo.jpeg' 
-              className='receipt-logo' 
+            <img
+              src={currentRestaurant?.logoUrl || '/assets/Logo.jpeg'}
+              className='receipt-logo'
               alt="Logo"
             />
-            <h2>Real Deal KTV Bar and Restaurant</h2>
-            <p>120 Mc feild, Eastern Avenue, Georgetown</p>
-            <p>Phone: +1(345) 329-7700</p>
+            <h2>{currentRestaurant?.name || 'Restaurant'}</h2>
+            {currentLocation?.address && <p>{currentLocation.address}</p>}
+            {currentLocation?.phone && <p>Phone: {currentLocation.phone}</p>}
           </div>
 
           <div className="divider"></div>

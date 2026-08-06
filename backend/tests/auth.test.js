@@ -14,47 +14,74 @@ afterAll(async () => {
 });
 
 describe('auth', () => {
-  it('registers a new user with Staff role forced regardless of input', async () => {
+  it('registers a new restaurant and makes the registering user its Owner', async () => {
+    const res = await request(app).post('/api/auth/register').send({
+      name: 'Test User',
+      email: 'register-test@example.com',
+      password: 'testpassword123',
+      restaurantName: "Register Test's Diner",
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.user.role).toBe('Owner');
+    expect(res.body.restaurant.name).toBe("Register Test's Diner");
+  });
+
+  it('rejects registration missing a restaurant name', async () => {
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ name: 'Test User', email: 'register-test@example.com', password: 'testpassword123', role: 'Owner' });
-    expect(res.status).toBe(201);
-    expect(res.body.user.role).toBe('Staff');
+      .send({ name: 'Test User', email: 'norestaurant@example.com', password: 'testpassword123' });
+    expect(res.status).toBe(400);
   });
 
   it('rejects passwords under 8 characters', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({ name: 'Test User', email: 'weakpass@example.com', password: 'short' });
+    const res = await request(app).post('/api/auth/register').send({
+      name: 'Test User',
+      email: 'weakpass@example.com',
+      password: 'short',
+      restaurantName: 'Weak Pass Diner',
+    });
     expect(res.status).toBe(400);
   });
 
   it('rejects duplicate email registration', async () => {
-    await request(app)
-      .post('/api/auth/register')
-      .send({ name: 'Test User', email: 'dup@example.com', password: 'testpassword123' });
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({ name: 'Test User 2', email: 'dup@example.com', password: 'testpassword123' });
+    await request(app).post('/api/auth/register').send({
+      name: 'Test User',
+      email: 'dup@example.com',
+      password: 'testpassword123',
+      restaurantName: 'Dup Diner',
+    });
+    const res = await request(app).post('/api/auth/register').send({
+      name: 'Test User 2',
+      email: 'dup@example.com',
+      password: 'testpassword123',
+      restaurantName: 'Dup Diner 2',
+    });
     expect(res.status).toBe(400);
   });
 
-  it('logs in with correct credentials and issues a JWT', async () => {
-    await request(app)
-      .post('/api/auth/register')
-      .send({ name: 'Login User', email: 'login-ok@example.com', password: 'testpassword123' });
+  it('logs in with correct credentials and issues a JWT scoped to the restaurant', async () => {
+    await request(app).post('/api/auth/register').send({
+      name: 'Login User',
+      email: 'login-ok@example.com',
+      password: 'testpassword123',
+      restaurantName: 'Login Ok Diner',
+    });
     const res = await request(app)
       .post('/api/auth/login')
       .send({ email: 'login-ok@example.com', password: 'testpassword123' });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeTruthy();
-    expect(res.body.user.role).toBe('Staff');
+    expect(res.body.user.role).toBe('Owner');
+    expect(res.body.restaurant.name).toBe('Login Ok Diner');
   });
 
   it('rejects the wrong password without leaking whether the account exists', async () => {
-    await request(app)
-      .post('/api/auth/register')
-      .send({ name: 'Login User', email: 'wrongpass@example.com', password: 'testpassword123' });
+    await request(app).post('/api/auth/register').send({
+      name: 'Login User',
+      email: 'wrongpass@example.com',
+      password: 'testpassword123',
+      restaurantName: 'Wrong Pass Diner',
+    });
     const res = await request(app)
       .post('/api/auth/login')
       .send({ email: 'wrongpass@example.com', password: 'wrongpassword' });
@@ -73,9 +100,12 @@ describe('auth', () => {
   });
 
   it('never returns the password hash in any response', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({ name: 'No Leak', email: 'noleak@example.com', password: 'testpassword123' });
+    const res = await request(app).post('/api/auth/register').send({
+      name: 'No Leak',
+      email: 'noleak@example.com',
+      password: 'testpassword123',
+      restaurantName: 'No Leak Diner',
+    });
     expect(res.body.user.password).toBeUndefined();
     expect(JSON.stringify(res.body)).not.toContain('testpassword123');
   });

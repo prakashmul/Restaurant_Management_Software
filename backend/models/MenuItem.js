@@ -7,6 +7,7 @@ const recipeItemSchema = new mongoose.Schema({
 
 const menuItemSchema = new mongoose.Schema(
   {
+    restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant', required: true },
     sku: { type: String },
     name: { type: String, required: true },
     category: { type: String, required: true },
@@ -15,5 +16,7 @@ const menuItemSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+menuItemSchema.index({ restaurantId: 1 });
 
 export default mongoose.model('MenuItem', menuItemSchema);

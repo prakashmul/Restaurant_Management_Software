@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { PosPage } from '../features/pos/PosPage';
 import { InventoryPage } from '../features/inventory/InventoryPage';
@@ -6,15 +6,56 @@ import { Sidebar } from '../shared/components/Sidebar';
 import { Header } from '../shared/components/Header';
 import { OrdersPage } from '../features/orders/OrdersPage';
 import { CreditLedgerPage } from '../features/credits/CreditLedgerPage';
+import { StaffPage } from '../features/staff/StaffPage';
+import { RecipeCostingPage } from '../features/recipe-costing/RecipeCostingPage';
+import { ChecklistsPage } from '../features/checklists/ChecklistsPage';
+import { SchedulingPage } from '../features/scheduling/SchedulingPage';
+import { ProcurementPage } from '../features/procurement/ProcurementPage';
+import { AuditLogPage } from '../features/audit-log/AuditLogPage';
+import { LocationsPage } from '../features/locations/LocationsPage';
+import { HeadOfficePage } from '../features/head-office/HeadOfficePage';
+import { TransfersPage } from '../features/transfers/TransfersPage';
 import { LoginModal } from '../auth/LoginModal';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { AuthProvider, useAuth } from '../auth/AuthContext';
+import { posApi } from '../api/posApi';
 
 function AppShell() {
-  const { currentUser, login, logout } = useAuth();
+  const { currentUser, currentLocation, setCurrentLocation, login, logout } = useAuth();
 
   // Open modal automatically on initial load if no user session exists
   const [isLoginOpen, setIsLoginOpen] = useState<boolean>(!currentUser);
+
+  // Once logged in, pick a starting location: a restricted staff member's
+  // own assigned location, or the first location for everyone else. Runs
+  // again after logout/login since currentLocation is cleared on both.
+  useEffect(() => {
+    if (!currentUser || currentLocation) return;
+    let cancelled = false;
+
+    posApi
+      .getLocations()
+      .then((locations) => {
+        if (cancelled || locations.length === 0) return;
+        const assigned = currentUser.locationId
+          ? locations.find((l) => l._id === currentUser.locationId)
+          : null;
+        const chosen = assigned || locations[0];
+        setCurrentLocation({
+          id: chosen._id,
+          name: chosen.name,
+          address: chosen.address,
+          phone: chosen.phone,
+          isActive: chosen.isActive,
+          geofence: chosen.geofence,
+        });
+      })
+      .catch((err) => console.error('Failed to load locations:', err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, currentLocation, setCurrentLocation]);
 
   // Handle Logout
   const handleLogout = () => {
@@ -30,8 +71,8 @@ function AppShell() {
           isOpen={true}
           // Prevent closing by clicking backdrop/X if unauthenticated
           onClose={() => { }}
-          onLoginSuccess={(user, token) => {
-            login(user, token);
+          onLoginSuccess={(user, token, restaurant) => {
+            login(user, token, restaurant);
             setIsLoginOpen(false);
           }}
         />
@@ -61,6 +102,15 @@ function AppShell() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/credits" element={<CreditLedgerPage />} />
+            <Route path="/staff" element={<StaffPage />} />
+            <Route path="/recipe-costing" element={<RecipeCostingPage />} />
+            <Route path="/checklists" element={<ChecklistsPage />} />
+            <Route path="/scheduling" element={<SchedulingPage />} />
+            <Route path="/procurement" element={<ProcurementPage />} />
+            <Route path="/transfers" element={<TransfersPage />} />
+            <Route path="/audit-log" element={<AuditLogPage />} />
+            <Route path="/locations" element={<LocationsPage />} />
+            <Route path="/head-office" element={<HeadOfficePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -70,8 +120,8 @@ function AppShell() {
       <LoginModal
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
-        onLoginSuccess={(user, token) => {
-          login(user, token);
+        onLoginSuccess={(user, token, restaurant) => {
+          login(user, token, restaurant);
           setIsLoginOpen(false);
         }}
       />

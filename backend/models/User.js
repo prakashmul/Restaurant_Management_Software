@@ -3,11 +3,13 @@ import bcrypt from 'bcrypt';
 
 const SALT_ROUNDS = 12;
 
+// A User is just a login identity (name, email, password) — which
+// restaurant(s) they can access and what role they hold at each is tracked
+// separately in StaffMembership, since one person can work at more than one.
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: true, select: false },
-  role: { type: String, enum: ['Owner', 'Staff'], default: 'Staff' },
   createdAt: { type: Date, default: Date.now },
 });
 

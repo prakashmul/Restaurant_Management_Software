@@ -1,10 +1,14 @@
 import Order from '../models/Order.js';
 import Customer from '../models/Customer.js';
 import { emitChange } from '../realtime/socket.js';
+import { logAudit } from '../services/auditService.js';
 
 export async function getCreditLedger(req, res) {
   try {
+    const { restaurantId, locationId } = req;
     const creditOrders = await Order.find({
+      restaurantId,
+      ...(locationId ? { locationId } : {}),
       $or: [{ paymentMethod: 'credit' }, { status: { $in: ['credit', 'unsettled', 'settled'] } }],
     });
 
@@ -61,11 +65,15 @@ export async function getCreditLedger(req, res) {
 
 // Prefer matching by the resolved Customer record; fall back to the legacy
 // name/phone string match for any pre-migration orders.
-async function resolveCreditQuery(customerPhone, customerName) {
+async function resolveCreditQuery(customerPhone, customerName, restaurantId, locationId) {
   const customer = await Customer.findOne(
-    customerPhone ? { phone: customerPhone } : { name: customerName, phone: '' }
+    customerPhone
+      ? { restaurantId, locationId, phone: customerPhone }
+      : { restaurantId, locationId, name: customerName, phone: '' }
   );
   return {
+    restaurantId,
+    locationId,
     status: { $in: ['credit', 'unsettled'] },
     ...(customer ? { customerId: customer._id } : { $or: [{ customerPhone }, { customerName }] }),
   };
@@ -74,9 +82,14 @@ async function resolveCreditQuery(customerPhone, customerName) {
 export async function partialCreditPay(req, res) {
   try {
     const { customerPhone, customerName, amount, note } = req.body;
+    const { restaurantId, locationId } = req;
     const payAmount = amount;
 
-    const query = await resolveCreditQuery(customerPhone, customerName);
+    if (!locationId) {
+      return res.status(400).json({ message: 'Select a location first' });
+    }
+
+    const query = await resolveCreditQuery(customerPhone, customerName, restaurantId, locationId);
     const creditOrders = await Order.find(query).sort({ createdAt: 1 });
 
     if (creditOrders.length === 0) {
@@ -113,6 +126,12 @@ export async function partialCreditPay(req, res) {
       await order.save();
     }
 
+    await logAudit(
+      restaurantId,
+      req.user,
+      `recorded a partial payment of Rs. ${payAmount.toLocaleString()} for ${customerName || customerPhone}`,
+      locationId
+    );
     emitChange('order');
     res.json({ message: 'Partial payment applied successfully' });
   } catch (err) {
@@ -124,12 +143,19 @@ export async function partialCreditPay(req, res) {
 export async function fullSettleCredit(req, res) {
   try {
     const { customerPhone, customerName } = req.body;
+    const { restaurantId, locationId } = req;
 
-    const query = await resolveCreditQuery(customerPhone, customerName);
+    if (!locationId) {
+      return res.status(400).json({ message: 'Select a location first' });
+    }
+
+    const query = await resolveCreditQuery(customerPhone, customerName, restaurantId, locationId);
     const creditOrders = await Order.find(query);
 
+    let totalSettled = 0;
     for (const order of creditOrders) {
       const remaining = order.remainingBalance ?? order.total;
+      totalSettled += remaining;
       order.remainingBalance = 0;
       order.status = 'settled';
       order.paidAt = new Date();
@@ -141,6 +167,14 @@ export async function fullSettleCredit(req, res) {
       await order.save();
     }
 
+    if (creditOrders.length > 0) {
+      await logAudit(
+        restaurantId,
+        req.user,
+        `settled a full credit balance of Rs. ${totalSettled.toLocaleString()} for ${customerName || customerPhone}`,
+        locationId
+      );
+    }
     emitChange('order');
     res.json({ message: 'All credit orders fully settled successfully' });
   } catch (err) {

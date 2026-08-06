@@ -3,17 +3,21 @@ import MenuItem from '../models/MenuItem.js';
 import Order from '../models/Order.js';
 import { parsePagination, paginatedResponse } from '../utils/pagination.js';
 import { emitChange } from '../realtime/socket.js';
+import { logAudit } from '../services/auditService.js';
 
 export async function listMenu(req, res) {
   try {
     const pagination = parsePagination(req);
     if (!pagination) {
-      const menuItems = await MenuItem.find();
+      const menuItems = await MenuItem.find({ restaurantId: req.restaurantId });
       return res.json(menuItems);
     }
     const [data, total] = await Promise.all([
-      MenuItem.find().sort({ createdAt: -1 }).skip(pagination.skip).limit(pagination.limit),
-      MenuItem.countDocuments(),
+      MenuItem.find({ restaurantId: req.restaurantId })
+        .sort({ createdAt: -1 })
+        .skip(pagination.skip)
+        .limit(pagination.limit),
+      MenuItem.countDocuments({ restaurantId: req.restaurantId }),
     ]);
     res.json(paginatedResponse(data, total, pagination));
   } catch (err) {
@@ -27,12 +31,13 @@ export async function createMenuItem(req, res) {
 
     // Auto-ensure category exists in Category collection
     const categoryName = category.trim();
-    const catExists = await Category.findOne({ name: categoryName });
+    const catExists = await Category.findOne({ restaurantId: req.restaurantId, name: categoryName });
     if (!catExists) {
-      await Category.create({ name: categoryName });
+      await Category.create({ restaurantId: req.restaurantId, name: categoryName });
     }
 
     const newItem = new MenuItem({
+      restaurantId: req.restaurantId,
       name: name.trim(),
       category: categoryName,
       price: parseFloat(price),
@@ -53,17 +58,22 @@ export async function deleteMenuItem(req, res) {
   try {
     const { id } = req.params;
 
-    const inActiveCart = await Order.exists({ status: 'pending', 'items.menuItemId': id });
+    const inActiveCart = await Order.exists({
+      restaurantId: req.restaurantId,
+      status: 'pending',
+      'items.menuItemId': id,
+    });
     if (inActiveCart) {
       return res.status(400).json({
         message: 'Cannot delete this item because it is in an active pending order.',
       });
     }
 
-    const deleted = await MenuItem.findByIdAndDelete(id);
+    const deleted = await MenuItem.findOneAndDelete({ _id: id, restaurantId: req.restaurantId });
     if (!deleted) {
       return res.status(404).json({ message: 'Menu item not found' });
     }
+    await logAudit(req.restaurantId, req.user, `deleted menu item "${deleted.name}"`);
     emitChange('menu');
     res.json({ message: 'Menu item deleted successfully' });
   } catch (err) {

@@ -24,7 +24,7 @@ export const OrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const { isOwner } = useAuth();
+  const { isOwner, currentRestaurant, currentLocation } = useAuth();
 
   // Helper to convert any Date or ISO string into local YYYY-MM-DD
   const formatLocalYYYYMMDD = (dateInput?: string | Date) => {
@@ -266,10 +266,10 @@ export const OrdersPage: React.FC = () => {
         <body>
           <div class="receipt-container">
             <div class="header">
-              <img src="/assets/Logo.jpeg" class="receipt-logo" alt="Logo" />
-              <h2>Real Deal KTV Bar and Restaurant</h2>
-              <p>120 Mc feild, Eastern Avenue, Georgetown</p>
-              <p>Phone: +1(345) 329-7700</p>
+              <img src="${escapeHtml(currentRestaurant?.logoUrl || '/assets/Logo.jpeg')}" class="receipt-logo" alt="Logo" />
+              <h2>${escapeHtml(currentRestaurant?.name || 'Restaurant')}</h2>
+              ${currentLocation?.address ? `<p>${escapeHtml(currentLocation.address)}</p>` : ''}
+              ${currentLocation?.phone ? `<p>Phone: ${escapeHtml(currentLocation.phone)}</p>` : ''}
             </div>
             <div class="divider"></div>
             <div class="details">

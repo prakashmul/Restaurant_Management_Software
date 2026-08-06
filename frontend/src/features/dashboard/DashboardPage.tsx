@@ -7,12 +7,6 @@ import { posApi } from '../../api/posApi';
 import { useAuth } from '../../auth/AuthContext';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
-const RESTAURANT_LOCATION = {
-  latitude: 27.694147,
-  longitude: 85.269939,
-};
-
-const ALLOWED_RADIUS_METERS = 300;
 const STORAGE_KEY = 'pos_active_shift_session';
 
 const calculateDistanceInMeters = (
@@ -55,8 +49,16 @@ interface OrderRecord {
 }
 
 export const DashboardPage: React.FC = () => {
-  const { currentUser: authUser, isOwner } = useAuth();
+  const { currentUser: authUser, currentRestaurant, currentLocation, isOwner } = useAuth();
   const currentUser = authUser?.name || 'Current Employee';
+
+  // A location only gets a geofence once its Owner configures one — every
+  // new location starts with latitude/longitude unset. Until then,
+  // attendance check-in/out is not location-restricted.
+  const geofenceLatitude = currentLocation?.geofence?.latitude ?? null;
+  const geofenceLongitude = currentLocation?.geofence?.longitude ?? null;
+  const isGeofenceConfigured = geofenceLatitude !== null && geofenceLongitude !== null;
+  const allowedRadiusMeters = currentLocation?.geofence?.radiusMeters ?? 300;
 
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
@@ -252,29 +254,31 @@ export const DashboardPage: React.FC = () => {
   }, [activeSessionStart, currentUser]);
 
   const evaluateLocation = useCallback((position: GeolocationPosition) => {
+    if (!isGeofenceConfigured || geofenceLatitude === null || geofenceLongitude === null) {
+      setGeoError(null);
+      setUserDistance(null);
+      setIsInRange(true);
+      return;
+    }
+
     setGeoError(null);
     const { latitude, longitude } = position.coords;
     const timestamp = position.timestamp;
 
-    const distance = calculateDistanceInMeters(
-      latitude,
-      longitude,
-      RESTAURANT_LOCATION.latitude,
-      RESTAURANT_LOCATION.longitude
-    );
+    const distance = calculateDistanceInMeters(latitude, longitude, geofenceLatitude, geofenceLongitude);
 
     const distRounded = Math.round(distance);
     setUserDistance(distRounded);
-    const insideRadius = distance <= ALLOWED_RADIUS_METERS;
+    const insideRadius = distance <= allowedRadiusMeters;
     setIsInRange(insideRadius);
 
     const hasActiveSession = isCheckedInRef.current || !!localStorage.getItem(STORAGE_KEY);
-    
+
     if (hasActiveSession && !insideRadius) {
       const departureTime = timestamp ? new Date(timestamp) : new Date();
       handleCheckOut('Auto-Checked Out', departureTime);
     }
-  }, [handleCheckOut]);
+  }, [handleCheckOut, isGeofenceConfigured, geofenceLatitude, geofenceLongitude, allowedRadiusMeters]);
 
   const evaluateLocationRef = useRef(evaluateLocation);
   useEffect(() => {
@@ -310,6 +314,11 @@ export const DashboardPage: React.FC = () => {
   }, []);
 
   const checkCurrentLocation = useCallback(() => {
+    if (!isGeofenceConfigured) {
+      setIsInRange(true);
+      setGeoError(null);
+      return;
+    }
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => evaluateLocationRef.current(pos),
@@ -319,9 +328,15 @@ export const DashboardPage: React.FC = () => {
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
-  }, []);
+  }, [isGeofenceConfigured]);
 
   useEffect(() => {
+    if (!isGeofenceConfigured) {
+      setIsInRange(true);
+      setGeoError(null);
+      return;
+    }
+
     if (!navigator.geolocation) {
       setGeoError('Geolocation is not supported by your browser.');
       return;
@@ -337,7 +352,7 @@ export const DashboardPage: React.FC = () => {
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
+  }, [isGeofenceConfigured]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -458,14 +473,14 @@ export const DashboardPage: React.FC = () => {
       {selectedRecordForPrint && (
         <div id="printable-receipt" className="hidden print:block font-mono text-black p-4 bg-white w-[320px] mx-auto text-xs leading-tight">
           <div className="text-center space-y-0.5 mb-3 border-b border-black pb-2">
-            <img 
-              src='/assets/Logo.jpeg' 
-              className='receipt-logo' 
+            <img
+              src={currentRestaurant?.logoUrl || '/assets/Logo.jpeg'}
+              className='receipt-logo'
               alt="Logo"
             />
-            <h1 className="font-bold text-sm tracking-wide">Real Deal KTV Bar and Restaurant</h1>
-            <p>120 Mc feild,Eastern Avenue,Georgetown</p>
-            <p>Ph: +1(345) 329-7700</p>
+            <h1 className="font-bold text-sm tracking-wide">{currentRestaurant?.name || 'Restaurant'}</h1>
+            {currentLocation?.address && <p>{currentLocation.address}</p>}
+            {currentLocation?.phone && <p>Ph: {currentLocation.phone}</p>}
           </div>
 
           {!isBulkPrint ? (
@@ -614,13 +629,16 @@ export const DashboardPage: React.FC = () => {
               <Clock className="w-5 h-5 text-indigo-400" /> Staff Attendance Tracker
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              Logged in as: <strong className="text-indigo-300">{currentUser}</strong> | Radius boundary: {ALLOWED_RADIUS_METERS}m.
+              Logged in as: <strong className="text-indigo-300">{currentUser}</strong>
+              {isGeofenceConfigured && ` | Radius boundary: ${allowedRadiusMeters}m.`}
             </p>
           </div>
 
           <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
             <MapPin className={`w-4 h-4 ${isInRange ? 'text-emerald-400' : 'text-rose-400'}`} />
-            {geoError ? (
+            {!isGeofenceConfigured ? (
+              <span className="text-slate-400">No location restriction set</span>
+            ) : geoError ? (
               <span className="text-amber-400">{geoError}</span>
             ) : userDistance !== null ? (
               <span>

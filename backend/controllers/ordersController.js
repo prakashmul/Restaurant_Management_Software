@@ -5,18 +5,23 @@ import Inventory from '../models/Inventory.js';
 import { parsePagination, paginatedResponse } from '../utils/pagination.js';
 import { emitChange } from '../realtime/socket.js';
 import { deductStockForOrder } from '../services/stockService.js';
+import { attachStockQuantities } from './inventoryController.js';
 import { findOrCreateCustomer } from '../services/customerService.js';
+import { logAudit } from '../services/auditService.js';
 
 export async function listOrders(req, res) {
   try {
+    const query = { restaurantId: req.restaurantId };
+    if (req.locationId) query.locationId = req.locationId;
+
     const pagination = parsePagination(req);
     if (!pagination) {
-      const orders = await Order.find();
+      const orders = await Order.find(query);
       return res.json(orders);
     }
     const [data, total] = await Promise.all([
-      Order.find().sort({ createdAt: -1 }).skip(pagination.skip).limit(pagination.limit),
-      Order.countDocuments(),
+      Order.find(query).sort({ createdAt: -1 }).skip(pagination.skip).limit(pagination.limit),
+      Order.countDocuments(query),
     ]);
     res.json(paginatedResponse(data, total, pagination));
   } catch (err) {
@@ -25,14 +30,19 @@ export async function listOrders(req, res) {
 }
 
 // Atomically creates or updates the single pending order for a table. A
-// partial unique index on {tableId, status:'pending'} (see models/Order.js)
-// guarantees only one such document can exist even under concurrent
-// requests from two terminals — one of them hits a duplicate-key error below.
+// partial unique index on {restaurantId, tableId, status:'pending'} (see
+// models/Order.js) guarantees only one such document can exist even under
+// concurrent requests from two terminals — one of them hits a duplicate-key
+// error below.
 export async function saveOrder(req, res) {
   const { tableId, items } = req.body;
+  const { restaurantId, locationId } = req;
 
   if (!tableId) {
     return res.status(400).json({ error: 'tableId is required' });
+  }
+  if (!locationId) {
+    return res.status(400).json({ error: 'Select a location first' });
   }
 
   const session = await mongoose.startSession();
@@ -44,10 +54,10 @@ export async function saveOrder(req, res) {
       // Resolve Table whether tableId is a Mongoose ObjectId or a Table Number
       let table = null;
       if (mongoose.Types.ObjectId.isValid(tableId)) {
-        table = await Table.findById(tableId).session(session);
+        table = await Table.findOne({ _id: tableId, restaurantId, locationId }).session(session);
       }
       if (!table && !isNaN(Number(tableId))) {
-        table = await Table.findOne({ number: Number(tableId) }).session(session);
+        table = await Table.findOne({ restaurantId, locationId, number: Number(tableId) }).session(session);
       }
 
       if (!table) {
@@ -69,15 +79,28 @@ export async function saveOrder(req, res) {
       const total = subtotal + tax;
 
       savedOrder = await Order.findOneAndUpdate(
-        { tableId: validTableId, status: 'pending' },
+        { restaurantId, tableId: validTableId, status: 'pending' },
         {
-          $set: { tableId: validTableId, items: formattedItems, subtotal, tax, total, remainingBalance: total },
+          $set: {
+            restaurantId,
+            locationId,
+            tableId: validTableId,
+            items: formattedItems,
+            subtotal,
+            tax,
+            total,
+            remainingBalance: total,
+          },
           $setOnInsert: { status: 'pending' },
         },
         { returnDocument: 'after', upsert: true, session }
       );
 
-      await Table.findByIdAndUpdate(validTableId, { status: 'occupied' }, { session });
+      await Table.findOneAndUpdate(
+        { _id: validTableId, restaurantId, locationId },
+        { status: 'occupied' },
+        { session }
+      );
     });
 
     req.log.info(`[Order Save] Saved pending order ${savedOrder._id} for Table ${tableNumber}`);
@@ -101,12 +124,13 @@ export async function saveOrder(req, res) {
 export async function payOrder(req, res) {
   const { orderId } = req.params;
   const { paymentMethod } = req.body;
+  const { restaurantId, locationId } = req;
 
   const session = await mongoose.startSession();
   try {
     let order;
     await session.withTransaction(async () => {
-      order = await Order.findById(orderId).session(session);
+      order = await Order.findOne({ _id: orderId, restaurantId, locationId }).session(session);
       if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
       if (order.status === 'paid') throw Object.assign(new Error('Order is already paid'), { status: 400 });
 
@@ -118,10 +142,15 @@ export async function payOrder(req, res) {
       order.paidAt = new Date();
       await order.save({ session });
 
-      await Table.findByIdAndUpdate(order.tableId, { status: 'available' }, { session });
+      await Table.findOneAndUpdate(
+        { _id: order.tableId, restaurantId, locationId },
+        { status: 'available' },
+        { session }
+      );
     });
 
-    const updatedInventory = await Inventory.find();
+    const inventoryItems = await Inventory.find({ restaurantId });
+    const updatedInventory = await attachStockQuantities(inventoryItems, restaurantId, locationId);
     emitChange('order');
     emitChange('table');
     emitChange('inventory');
@@ -138,17 +167,23 @@ export async function payOrder(req, res) {
 export async function creditOrder(req, res) {
   const { orderId } = req.params;
   const { customerName, customerPhone } = req.body;
+  const { restaurantId, locationId } = req;
 
   const session = await mongoose.startSession();
   try {
     let order;
     await session.withTransaction(async () => {
-      order = await Order.findById(orderId).session(session);
+      order = await Order.findOne({ _id: orderId, restaurantId, locationId }).session(session);
       if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
 
       await deductStockForOrder(order, 'POS System (Credit)', session);
 
-      const customer = await findOrCreateCustomer({ name: customerName, phone: customerPhone }, session);
+      const customer = await findOrCreateCustomer(
+        { name: customerName, phone: customerPhone },
+        restaurantId,
+        locationId,
+        session
+      );
 
       order.status = 'credit';
       order.paymentMethod = 'credit';
@@ -158,7 +193,11 @@ export async function creditOrder(req, res) {
       order.remainingBalance = order.total;
       await order.save({ session });
 
-      await Table.findByIdAndUpdate(order.tableId, { status: 'available' }, { session });
+      await Table.findOneAndUpdate(
+        { _id: order.tableId, restaurantId, locationId },
+        { status: 'available' },
+        { session }
+      );
     });
 
     emitChange('order');
@@ -177,21 +216,23 @@ export async function creditOrder(req, res) {
 export async function cancelTableOrder(req, res) {
   try {
     const { tableId } = req.params;
+    const { restaurantId, locationId } = req;
     let table = null;
 
     if (mongoose.Types.ObjectId.isValid(tableId)) {
-      table = await Table.findById(tableId);
+      table = await Table.findOne({ _id: tableId, restaurantId, locationId });
     }
     if (!table && !isNaN(Number(tableId))) {
-      table = await Table.findOne({ number: Number(tableId) });
+      table = await Table.findOne({ restaurantId, locationId, number: Number(tableId) });
     }
 
     const targetTableId = table ? table._id : tableId;
 
-    await Order.deleteMany({ tableId: targetTableId, status: 'pending' });
+    await Order.deleteMany({ restaurantId, tableId: targetTableId, status: 'pending' });
     if (table) {
       table.status = 'available';
       await table.save();
+      await logAudit(restaurantId, req.user, `cancelled the pending order for Table #${table.number}`, locationId);
     }
 
     emitChange('order');
@@ -204,7 +245,14 @@ export async function cancelTableOrder(req, res) {
 
 export async function deleteOrder(req, res) {
   try {
-    await Order.findByIdAndDelete(req.params.id);
+    const deleted = await Order.findOneAndDelete({
+      _id: req.params.id,
+      restaurantId: req.restaurantId,
+      locationId: req.locationId,
+    });
+    if (deleted) {
+      await logAudit(req.restaurantId, req.user, `deleted order #${deleted._id.toString().slice(-6)}`, req.locationId);
+    }
     emitChange('order');
     res.json({ message: 'Order deleted successfully' });
   } catch (err) {

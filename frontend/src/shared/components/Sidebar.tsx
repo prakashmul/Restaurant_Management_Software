@@ -6,6 +6,15 @@ import {
   Package,
   ShoppingBag,
   CreditCard,
+  Users,
+  ChefHat,
+  ClipboardCheck,
+  CalendarDays,
+  Truck,
+  History,
+  Building2,
+  MapPin,
+  ArrowLeftRight,
   User,
   ChevronUp,
   LogIn,
@@ -23,7 +32,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  currentUser = { name: 'Monster Dai', role: 'Owner' }, // Pass null if logged out
+  currentUser = null,
   onLogin,
   onLogout
 }) => {
@@ -36,6 +45,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { path: '/inventory', label: 'Inventory', icon: Package, end: false },
     { path: '/orders', label: 'Order History', icon: ShoppingBag, end: false },
     { path: '/credits', label: 'Credit Ledger', icon: CreditCard, end: false },
+    { path: '/head-office', label: 'Head Office', icon: Building2, end: false },
+    { path: '/recipe-costing', label: 'Recipe Costing', icon: ChefHat, end: false },
+    { path: '/checklists', label: 'Checklists', icon: ClipboardCheck, end: false },
+    { path: '/scheduling', label: 'Staff Schedule', icon: CalendarDays, end: false },
+    { path: '/procurement', label: 'Procurement', icon: Truck, end: false },
+    { path: '/transfers', label: 'Transfers', icon: ArrowLeftRight, end: false },
+    { path: '/staff', label: 'Staff & Roles', icon: Users, end: false },
+    { path: '/locations', label: 'Locations', icon: MapPin, end: false },
+    { path: '/audit-log', label: 'Audit Log', icon: History, end: false },
   ] as const;
 
   // Close popup menu when clicking outside

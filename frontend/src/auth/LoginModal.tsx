@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { Lock, Mail, X, LogIn, UserPlus, User, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Lock, Mail, X, LogIn, UserPlus, User, Store, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { API_ROOT } from '../api/posApi';
+import type { AuthRestaurant } from './AuthContext';
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoginSuccess: (user: { name: string; role: string; email: string }, token: string) => void;
+  onLoginSuccess: (
+    user: { name: string; role: string; email: string },
+    token: string,
+    restaurant?: AuthRestaurant | null
+  ) => void;
   isLoggedIn?: boolean;
 }
 
@@ -17,6 +22,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState('');
+  const [restaurantName, setRestaurantName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -43,6 +49,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       return;
     }
 
+    if (isSignUp && !restaurantName) {
+      setError('Please enter your restaurant name.');
+      return;
+    }
+
     if (!email || !password) {
       setError('Please fill in all fields.');
       return;
@@ -52,7 +63,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       setLoading(true);
 
       const endpoint = isSignUp ? `${API_BASE_URL}/register` : `${API_BASE_URL}/login`;
-      const payload = isSignUp ? { name, email, password } : { email, password };
+      const payload = isSignUp ? { name, email, password, restaurantName } : { email, password };
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -76,13 +87,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       if (isSignUp) {
         // Success flow for Registration
         setName('');
+        setRestaurantName('');
         setEmail(email);
         setPassword('');
         setIsSignUp(false);
-        setSuccessMessage('Account created successfully in database! Please sign in.');
+        setSuccessMessage('Restaurant created successfully! Please sign in.');
       } else {
         // Success flow for Login — AuthContext owns writing to storage.
-        onLoginSuccess(data.user, data.token);
+        onLoginSuccess(data.user, data.token, data.restaurant);
 
         setEmail('');
         setPassword('');
@@ -114,11 +126,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             {isSignUp ? <UserPlus className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
           </div>
           <h2 className="text-xl font-bold text-white tracking-tight">
-            {isSignUp ? 'Create Staff Account' : 'Sign in to Real Deal'}
+            {isSignUp ? 'Register Your Restaurant' : 'Sign In'}
           </h2>
           <p className="text-xs text-slate-400">
             {isSignUp
-              ? 'Enter your details to register a new account'
+              ? 'Create your restaurant and become its Owner'
               : 'Enter your staff credentials to access POS controls'}
           </p>
         </div>
@@ -157,6 +169,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
           )}
 
+          {isSignUp && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Restaurant Name
+              </label>
+              <div className="relative">
+                <Store className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  required={isSignUp}
+                  value={restaurantName}
+                  onChange={(e) => setRestaurantName(e.target.value)}
+                  placeholder="Your Restaurant's Name"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
               Email Address
@@ -168,7 +199,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="manager@realdeal.com"
+                placeholder="you@restaurant.com"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
               />
             </div>
@@ -200,7 +231,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               'Processing...'
             ) : isSignUp ? (
               <>
-                <UserPlus className="w-4 h-4" /> Create Account
+                <UserPlus className="w-4 h-4" /> Create Restaurant
               </>
             ) : (
               <>

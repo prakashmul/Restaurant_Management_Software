@@ -6,12 +6,27 @@ export const API_BASE_URL = `${API_ROOT}/api`;
 
 const API = axios.create({ baseURL: API_BASE_URL });
 
-// Attach the signed-in user's JWT to every request.
+// Attach the signed-in user's JWT, and the currently-selected location (if
+// any), to every request. A location-restricted staff member's header is
+// ignored server-side in favor of their assigned location — this is just
+// what an unrestricted Owner/Manager is currently looking at.
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem('authToken');
   if (token) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const savedLocation = localStorage.getItem('currentLocation');
+  if (savedLocation) {
+    try {
+      const locationId = JSON.parse(savedLocation)?.id;
+      if (locationId) {
+        config.headers = config.headers || {};
+        config.headers['X-Location-Id'] = locationId;
+      }
+    } catch {
+      // ignore malformed localStorage value
+    }
   }
   return config;
 });
@@ -73,6 +88,191 @@ export interface AttendanceRecordPayload {
   checkOutTime: string | null;
   duration: string;
   status: 'Completed' | 'Auto-Checked Out' | 'Active';
+}
+
+export type MenuEngineeringClass = 'star' | 'puzzle' | 'plow-horse' | 'dog' | null;
+
+export interface CostedDish {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  ingredientCost: number | null;
+  foodCostPercent: number | null;
+  margin: number | null;
+  unitsSold: number;
+  revenue: number;
+  classification: MenuEngineeringClass;
+}
+
+export interface WasteLogEntry {
+  id: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  reason: string;
+  performedBy: string;
+  createdAt: string;
+}
+
+export interface MenuEngineeringReport {
+  periodDays: number;
+  medianUnitsSold: number;
+  medianMargin: number;
+  dishesAnalyzed: number;
+  dishesMissingCostData: number;
+  dishes: CostedDish[];
+  wasteLog: WasteLogEntry[];
+}
+
+export interface AuditLogEntry {
+  _id: string;
+  actorName: string;
+  actorEmail: string;
+  action: string;
+  createdAt: string;
+}
+
+export interface Location {
+  _id: string;
+  name: string;
+  address: string;
+  phone: string;
+  isActive: boolean;
+  geofence: {
+    latitude: number | null;
+    longitude: number | null;
+    radiusMeters: number;
+  };
+}
+
+export interface HeadOfficeLocationSummary {
+  id: string;
+  name: string;
+  address: string;
+  isActive: boolean;
+  todaySales: number;
+  sales7d: number;
+  salesTrendPercent: number | null;
+  dailySales: { date: string; total: number }[];
+  foodCostPercent: number | null;
+  foodCostStatus: 'good' | 'watch' | 'bad' | 'unknown';
+  laborHours7d: number;
+  creditExposure: number;
+}
+
+export interface HeadOfficeSummary {
+  locations: HeadOfficeLocationSummary[];
+}
+
+export interface Vendor {
+  _id: string;
+  name: string;
+  category: string;
+  contactPhone: string;
+  contactEmail: string;
+}
+
+export type PurchaseOrderStatus = 'draft' | 'sent' | 'received' | 'reconciled';
+
+export interface PurchaseOrderItem {
+  inventoryItemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+}
+
+export interface PurchaseOrder {
+  _id: string;
+  vendorId: string;
+  vendorName: string;
+  status: PurchaseOrderStatus;
+  items: PurchaseOrderItem[];
+  totalAmount: number;
+  createdBy: string;
+  createdAt: string;
+  sentAt: string | null;
+  receivedAt: string | null;
+  reconciledAt: string | null;
+}
+
+export type TransferStatus = 'in_transit' | 'received' | 'cancelled';
+
+export interface TransferItem {
+  inventoryItemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+}
+
+export interface Transfer {
+  _id: string;
+  fromLocationId: string;
+  toLocationId: string;
+  fromLocationName: string;
+  toLocationName: string;
+  items: TransferItem[];
+  status: TransferStatus;
+  requestedBy: string;
+  createdAt: string;
+  receivedAt: string | null;
+  cancelledAt: string | null;
+}
+
+export interface Shift {
+  _id: string;
+  staffMembershipId: string;
+  staffName: string;
+  role: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface ScheduleVariance {
+  start: string;
+  end: string;
+  totalPlannedSeconds: number;
+  totalActualSeconds: number;
+  variancePercent: number | null;
+  perStaff: { name: string; plannedSeconds: number; actualSeconds: number }[];
+}
+
+export interface ChecklistTemplate {
+  _id: string;
+  name: string;
+  items: { text: string }[];
+}
+
+export interface ChecklistItem {
+  index: number;
+  text: string;
+  done: boolean;
+  completedBy: string;
+  completedAt: string | null;
+}
+
+export interface ChecklistCompletion {
+  completionId: string;
+  templateId: string;
+  templateName: string;
+  date: string;
+  items: ChecklistItem[];
+  completedCount: number;
+  totalCount: number;
+}
+
+export type StaffRole = 'Owner' | 'Manager' | 'Cashier' | 'Waiter' | 'Kitchen';
+
+export interface StaffMember {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: StaffRole;
+  status: 'active' | 'invited';
+  joinedAt: string;
 }
 
 export const posApi = {
@@ -225,4 +425,98 @@ export const posApi = {
       throw error;
     }
   },
+
+  // Staff & Roles
+  getStaff: () => API.get<StaffMember[]>('/staff').then((r) => r.data),
+
+  inviteStaff: (data: { name: string; email: string; password: string; role: StaffRole }) =>
+    API.post<StaffMember>('/staff/invite', data).then((r) => r.data),
+
+  updateStaffRole: (staffId: string, role: StaffRole) =>
+    API.patch<StaffMember>(`/staff/${staffId}/role`, { role }).then((r) => r.data),
+
+  removeStaff: (staffId: string) => API.delete(`/staff/${staffId}`).then((r) => r.data),
+
+  // Recipe Costing & Menu Engineering
+  getMenuEngineering: (days: number = 30) =>
+    API.get<MenuEngineeringReport>('/recipe-costing', { params: { days } }).then((r) => r.data),
+
+  // Checklists
+  getChecklistTemplates: () => API.get<ChecklistTemplate[]>('/checklists/templates').then((r) => r.data),
+
+  createChecklistTemplate: (data: { name: string; items: string[] }) =>
+    API.post<ChecklistTemplate>('/checklists/templates', data).then((r) => r.data),
+
+  deleteChecklistTemplate: (id: string) => API.delete(`/checklists/templates/${id}`).then((r) => r.data),
+
+  getTodayChecklists: () => API.get<ChecklistCompletion[]>('/checklists/today').then((r) => r.data),
+
+  toggleChecklistItem: (completionId: string, itemIndex: number) =>
+    API.patch<ChecklistCompletion>(`/checklists/completions/${completionId}/items/${itemIndex}/toggle`).then(
+      (r) => r.data
+    ),
+
+  // Staff Scheduling
+  getShifts: (start: string, end: string) =>
+    API.get<Shift[]>('/scheduling/shifts', { params: { start, end } }).then((r) => r.data),
+
+  createShift: (data: { staffMembershipId: string; date: string; startTime: string; endTime: string }) =>
+    API.post<Shift>('/scheduling/shifts', data).then((r) => r.data),
+
+  deleteShift: (id: string) => API.delete(`/scheduling/shifts/${id}`).then((r) => r.data),
+
+  getScheduleVariance: (start: string, end: string) =>
+    API.get<ScheduleVariance>('/scheduling/variance', { params: { start, end } }).then((r) => r.data),
+
+  // Procurement & Vendors
+  getVendors: () => API.get<Vendor[]>('/procurement/vendors').then((r) => r.data),
+
+  createVendor: (data: { name: string; category: string; contactPhone?: string; contactEmail?: string }) =>
+    API.post<Vendor>('/procurement/vendors', data).then((r) => r.data),
+
+  deleteVendor: (id: string) => API.delete(`/procurement/vendors/${id}`).then((r) => r.data),
+
+  getPurchaseOrders: (status?: PurchaseOrderStatus) =>
+    API.get<PurchaseOrder[]>('/procurement/purchase-orders', { params: status ? { status } : {} }).then(
+      (r) => r.data
+    ),
+
+  createPurchaseOrder: (data: {
+    vendorId: string;
+    items: { inventoryItemId: string; quantity: number; unitCost: number }[];
+  }) => API.post<PurchaseOrder>('/procurement/purchase-orders', data).then((r) => r.data),
+
+  updatePurchaseOrderStatus: (id: string, status: PurchaseOrderStatus) =>
+    API.patch<PurchaseOrder>(`/procurement/purchase-orders/${id}/status`, { status }).then((r) => r.data),
+
+  deletePurchaseOrder: (id: string) => API.delete(`/procurement/purchase-orders/${id}`).then((r) => r.data),
+
+  // Audit Log
+  getAuditLog: (limit: number = 50) =>
+    API.get<AuditLogEntry[]>('/audit-log', { params: { limit } }).then((r) => r.data),
+
+  // Locations
+  getLocations: () => API.get<Location[]>('/locations').then((r) => r.data),
+
+  createLocation: (data: { name: string; address?: string; phone?: string }) =>
+    API.post<Location>('/locations', data).then((r) => r.data),
+
+  updateLocation: (id: string, data: Partial<Pick<Location, 'name' | 'address' | 'phone' | 'isActive'>>) =>
+    API.patch<Location>(`/locations/${id}`, data).then((r) => r.data),
+
+  deleteLocation: (id: string) => API.delete(`/locations/${id}`).then((r) => r.data),
+
+  // Head Office
+  getHeadOfficeSummary: () => API.get<HeadOfficeSummary>('/head-office/summary').then((r) => r.data),
+
+  // Inter-Location Transfers
+  getTransfers: (status?: TransferStatus) =>
+    API.get<Transfer[]>('/transfers', { params: status ? { status } : {} }).then((r) => r.data),
+
+  createTransfer: (data: { toLocationId: string; items: { inventoryItemId: string; quantity: number }[] }) =>
+    API.post<Transfer>('/transfers', data).then((r) => r.data),
+
+  receiveTransfer: (id: string) => API.patch<Transfer>(`/transfers/${id}/receive`).then((r) => r.data),
+
+  cancelTransfer: (id: string) => API.patch<Transfer>(`/transfers/${id}/cancel`).then((r) => r.data),
 };

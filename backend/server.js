@@ -4,7 +4,9 @@ import mongoose from 'mongoose';
 import { createApp } from './app.js';
 import { logger } from './middleware/logger.js';
 import { initSocket } from './realtime/socket.js';
-import { seedInitialData } from './services/seedService.js';
+import { migrateToMultiTenant } from './services/tenantMigrationService.js';
+import { migrateToLocations } from './services/locationMigrationService.js';
+import { migrateToLocationStock } from './services/inventoryStockMigrationService.js';
 import { migrateOrdersToCustomers } from './services/customerService.js';
 
 // --- REQUIRED ENVIRONMENT VARIABLES ---
@@ -33,7 +35,9 @@ mongoose
   .connect(MONGO_URI)
   .then(async () => {
     logger.info('Connected to MongoDB!');
-    await seedInitialData();
+    await migrateToMultiTenant();
+    await migrateToLocations();
+    await migrateToLocationStock();
     await migrateOrdersToCustomers();
   })
   .catch((err) => logger.fatal({ err }, 'MongoDB connection error'));

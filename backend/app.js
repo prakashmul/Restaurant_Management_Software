@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import { requireAuth } from './middleware/auth.js';
+import { requireAuth, resolveLocationScope } from './middleware/auth.js';
 import { requestLogger } from './middleware/logger.js';
 
 import healthRoutes from './routes/healthRoutes.js';
@@ -13,6 +13,15 @@ import tablesRoutes from './routes/tablesRoutes.js';
 import ordersRoutes from './routes/ordersRoutes.js';
 import creditsRoutes from './routes/creditsRoutes.js';
 import attendanceRoutes from './routes/attendanceRoutes.js';
+import staffRoutes from './routes/staffRoutes.js';
+import recipeCostingRoutes from './routes/recipeCostingRoutes.js';
+import checklistsRoutes from './routes/checklistsRoutes.js';
+import schedulingRoutes from './routes/schedulingRoutes.js';
+import procurementRoutes from './routes/procurementRoutes.js';
+import auditRoutes from './routes/auditRoutes.js';
+import locationsRoutes from './routes/locationsRoutes.js';
+import headOfficeRoutes from './routes/headOfficeRoutes.js';
+import transfersRoutes from './routes/transfersRoutes.js';
 
 // Builds the Express app with no side effects — no DB connection, no
 // listen() — so it can be mounted by server.js for real traffic or
@@ -50,8 +59,10 @@ export function createApp({ allowedOrigins }) {
   app.use(healthRoutes);
   app.use('/api/auth', authRoutes);
 
-  // Every route registered below this line requires a valid Bearer token.
+  // Every route registered below this line requires a valid Bearer token,
+  // and has req.locationId resolved (see resolveLocationScope).
   app.use(requireAuth);
+  app.use(resolveLocationScope);
 
   app.use('/api/categories', categoriesRoutes);
   app.use('/api/menu', menuRoutes);
@@ -60,6 +71,15 @@ export function createApp({ allowedOrigins }) {
   app.use('/api/orders', ordersRoutes);
   app.use('/api/credits', creditsRoutes);
   app.use('/api/attendance', attendanceRoutes);
+  app.use('/api/staff', staffRoutes);
+  app.use('/api/recipe-costing', recipeCostingRoutes);
+  app.use('/api/checklists', checklistsRoutes);
+  app.use('/api/scheduling', schedulingRoutes);
+  app.use('/api/procurement', procurementRoutes);
+  app.use('/api/audit-log', auditRoutes);
+  app.use('/api/locations', locationsRoutes);
+  app.use('/api/head-office', headOfficeRoutes);
+  app.use('/api/transfers', transfersRoutes);
 
   // --- 404 FOR UNMATCHED ROUTES ---
   app.use((req, res) => {

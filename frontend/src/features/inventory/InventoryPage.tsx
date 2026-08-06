@@ -18,7 +18,7 @@ type StockHistoryLog = {
 };
 
 export const InventoryPage = () => {
-  const { isOwner } = useAuth();
+  const { isOwner, currentLocation } = useAuth();
 
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [history, setHistory] = useState<StockHistoryLog[]>([]);
@@ -68,7 +68,8 @@ export const InventoryPage = () => {
 
   useEffect(() => {
     loadAllData();
-  }, [isOwner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner, currentLocation?.id]);
 
   useRealtimeRefresh(['inventory'], loadAllData);
 

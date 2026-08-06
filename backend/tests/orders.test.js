@@ -1,22 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { setupTestApp } from './helpers/testApp.js';
-import { createAuthedUser } from './helpers/auth.js';
+import { createAuthedUser, authedRequest } from './helpers/auth.js';
 
 let app;
 let teardown;
-let token;
+let auth;
 
 beforeAll(async () => {
   ({ app, teardown } = await setupTestApp());
-  ({ token } = await createAuthedUser(app));
+  const { token, locationId } = await createAuthedUser(app);
+  auth = authedRequest(token, locationId);
 }, 60000);
 
 afterAll(async () => {
   await teardown();
 });
-
-const auth = (req) => req.set('Authorization', `Bearer ${token}`);
 
 // Creates a table + an inventory item + a menu item whose recipe consumes
 // `stock` units of that ingredient per portion. Returns their ids.
@@ -159,14 +158,14 @@ describe('referential integrity on delete', () => {
 });
 
 describe('role-based access control', () => {
-  it('rejects a Staff user from the Owner-only stock history endpoint', async () => {
-    const res = await auth(request(app).get('/api/inventory/history'));
+  it('rejects a non-Owner user from the Owner-only stock history endpoint', async () => {
+    const { token: managerToken } = await createAuthedUser(app, { role: 'Manager' });
+    const res = await request(app).get('/api/inventory/history').set('Authorization', `Bearer ${managerToken}`);
     expect(res.status).toBe(403);
   });
 
   it('allows an Owner to access the stock history endpoint', async () => {
-    const { token: ownerToken } = await createAuthedUser(app, { role: 'Owner' });
-    const res = await request(app).get('/api/inventory/history').set('Authorization', `Bearer ${ownerToken}`);
+    const res = await auth(request(app).get('/api/inventory/history'));
     expect(res.status).toBe(200);
   });
 });

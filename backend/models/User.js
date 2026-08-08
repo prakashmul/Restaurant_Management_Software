@@ -11,6 +11,11 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: true, select: false },
   createdAt: { type: Date, default: Date.now },
+  // Set as soon as /2fa/setup is called, but totpEnabled stays false until
+  // the user proves possession of the authenticator app via /2fa/enable —
+  // so a setup that's started and abandoned never actually gates login.
+  totpSecret: { type: String, default: null, select: false },
+  totpEnabled: { type: Boolean, default: false },
 });
 
 userSchema.pre('save', async function hashPassword() {

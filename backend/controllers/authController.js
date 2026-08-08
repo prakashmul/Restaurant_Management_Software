@@ -1,10 +1,12 @@
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import { generateSecret, generate as generateTotp, verify as verifyTotp, generateURI } from 'otplib';
+import QRCode from 'qrcode';
 import User from '../models/User.js';
 import Restaurant from '../models/Restaurant.js';
 import StaffMembership from '../models/StaffMembership.js';
 import Location from '../models/Location.js';
-import { seedNewRestaurant } from '../services/seedService.js';
+import { seedNewRestaurant, seedDefaultRoles } from '../services/seedService.js';
 
 function signToken(user, membership) {
   return jwt.sign(
@@ -20,7 +22,7 @@ function signToken(user, membership) {
   );
 }
 
-function toRestaurantDTO(restaurant) {
+export function toRestaurantDTO(restaurant) {
   return {
     id: restaurant._id,
     name: restaurant.name,
@@ -29,6 +31,8 @@ function toRestaurantDTO(restaurant) {
     logoUrl: restaurant.logoUrl,
     currency: restaurant.currency,
     taxRatePercent: restaurant.taxRatePercent,
+    loyaltyEarnRatePerRs: restaurant.loyaltyEarnRatePerRs,
+    loyaltyPointValueRs: restaurant.loyaltyPointValueRs,
     geofence: restaurant.geofence,
   };
 }
@@ -71,10 +75,21 @@ export async function register(req, res) {
 
       newUser = (await User.create([{ name, email, password }], { session }))[0];
 
+      const roles = await seedDefaultRoles(restaurant._id, session);
+      const ownerRole = roles.find((r) => r.name === 'Owner');
+
       // Owner starts unrestricted (locationId: null) — they can see and
       // manage every location this restaurant ever adds, from day one.
       await StaffMembership.create(
-        [{ userId: newUser._id, restaurantId: restaurant._id, locationId: null, role: 'Owner' }],
+        [
+          {
+            userId: newUser._id,
+            restaurantId: restaurant._id,
+            locationId: null,
+            role: 'Owner',
+            roleId: ownerRole._id,
+          },
+        ],
         { session }
       );
 
@@ -98,9 +113,9 @@ const BCRYPT_HASH_PATTERN = /^\$2[aby]\$/;
 
 export async function login(req, res) {
   try {
-    const { email, password } = req.body;
+    const { email, password, totpToken } = req.body;
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +totpSecret');
     if (!user) {
       return res.status(400).json({ message: 'Invalid email or password.' });
     }
@@ -121,6 +136,20 @@ export async function login(req, res) {
 
     if (!isValid) {
       return res.status(400).json({ message: 'Invalid email or password.' });
+    }
+
+    // Password alone isn't enough for a TOTP-enabled account. The client
+    // resubmits this same request with totpToken once the user has it —
+    // no separate pending-session state, consistent with this app's fully
+    // stateless JWT auth (see middleware/auth.js).
+    if (user.totpEnabled) {
+      if (!totpToken) {
+        return res.status(200).json({ requiresTotp: true });
+      }
+      const result = await verifyTotp({ token: totpToken, secret: user.totpSecret });
+      if (!result.valid) {
+        return res.status(400).json({ message: 'Invalid authentication code.' });
+      }
     }
 
     // A user can in principle hold memberships at more than one restaurant;
@@ -148,5 +177,89 @@ export async function login(req, res) {
   } catch (err) {
     req.log.error({ err }, 'Login error');
     res.status(500).json({ message: 'Server error during login.' });
+  }
+}
+
+export async function getTotpStatus(req, res) {
+  const user = await User.findById(req.user.id).select('totpEnabled');
+  res.json({ totpEnabled: !!user?.totpEnabled });
+}
+
+// Generates a fresh secret and stores it unconfirmed (totpEnabled stays
+// false) — the user must prove they've actually added it to an
+// authenticator app via /2fa/enable before it starts gating login.
+export async function setupTotp(req, res) {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    // Otherwise a stolen session token could disable 2FA outright by
+    // calling setup (which clears totpEnabled) without ever proving
+    // possession of the current authenticator code — disable is the only
+    // path allowed to turn it off, and that always re-verifies a code.
+    if (user.totpEnabled) {
+      return res.status(400).json({
+        message: 'Two-factor authentication is already enabled. Disable it first to set up a new device.',
+      });
+    }
+
+    const secret = generateSecret();
+    user.totpSecret = secret;
+    user.totpEnabled = false;
+    await user.save();
+
+    const otpauthUrl = generateURI({ issuer: 'Restaurant Management Software', label: user.email, secret });
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    res.json({ secret, otpauthUrl, qrCodeDataUrl });
+  } catch (err) {
+    req.log.error({ err }, 'Error setting up TOTP');
+    res.status(500).json({ message: 'Failed to start two-factor setup.' });
+  }
+}
+
+export async function enableTotp(req, res) {
+  try {
+    const { token } = req.body;
+    const user = await User.findById(req.user.id).select('+totpSecret');
+    if (!user || !user.totpSecret) {
+      return res.status(400).json({ message: 'Start two-factor setup first.' });
+    }
+
+    const result = await verifyTotp({ token, secret: user.totpSecret });
+    if (!result.valid) {
+      return res.status(400).json({ message: 'Invalid authentication code.' });
+    }
+
+    user.totpEnabled = true;
+    await user.save();
+    res.json({ totpEnabled: true });
+  } catch (err) {
+    req.log.error({ err }, 'Error enabling TOTP');
+    res.status(500).json({ message: 'Failed to enable two-factor authentication.' });
+  }
+}
+
+export async function disableTotp(req, res) {
+  try {
+    const { token } = req.body;
+    const user = await User.findById(req.user.id).select('+totpSecret');
+    if (!user || !user.totpEnabled) {
+      return res.status(400).json({ message: 'Two-factor authentication is not enabled.' });
+    }
+
+    const result = await verifyTotp({ token, secret: user.totpSecret });
+    if (!result.valid) {
+      return res.status(400).json({ message: 'Invalid authentication code.' });
+    }
+
+    user.totpEnabled = false;
+    user.totpSecret = null;
+    await user.save();
+    res.json({ totpEnabled: false });
+  } catch (err) {
+    req.log.error({ err }, 'Error disabling TOTP');
+    res.status(500).json({ message: 'Failed to disable two-factor authentication.' });
   }
 }

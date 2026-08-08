@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ALL_PERMISSIONS } from './permissions.js';
 
 export const registerSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
@@ -10,22 +11,45 @@ export const registerSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().trim().email('A valid email is required.'),
   password: z.string().min(1, 'Password is required.'),
+  // Only required once the account has TOTP enabled — see authController.js login().
+  totpToken: z.string().trim().min(1).optional(),
 });
 
-const ROLE_ENUM = ['Owner', 'Manager', 'Cashier', 'Waiter', 'Kitchen'];
+export const totpTokenSchema = z.object({
+  token: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app.'),
+});
 
 export const staffInviteSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
   email: z.string().trim().email('A valid email is required.'),
   password: z.string().min(8, 'Password must be at least 8 characters.'),
-  role: z.enum(ROLE_ENUM),
+  roleId: z.string().trim().min(1, 'A role is required.'),
   // Omit or null = unrestricted (sees every location); set = confined to one.
   locationId: z.string().trim().min(1).nullable().optional(),
 });
 
 export const staffRoleUpdateSchema = z.object({
-  role: z.enum(ROLE_ENUM),
+  roleId: z.string().trim().min(1, 'A role is required.'),
   locationId: z.string().trim().min(1).nullable().optional(),
+});
+
+export const staffRateUpdateSchema = z.object({
+  hourlyRate: z.coerce.number().min(0, 'Hourly rate cannot be negative.'),
+});
+
+export const createRoleSchema = z.object({
+  name: z.string().trim().min(1, 'Role name is required.').max(40),
+  description: z.string().trim().max(200).optional().default(''),
+  permissions: z.array(z.enum(ALL_PERMISSIONS)).default([]),
+});
+
+export const updateRoleSchema = z.object({
+  name: z.string().trim().min(1).max(40).optional(),
+  description: z.string().trim().max(200).optional(),
+  permissions: z.array(z.enum(ALL_PERMISSIONS)).optional(),
 });
 
 export const categorySchema = z.object({
@@ -50,8 +74,19 @@ export const inventoryItemSchema = z.object({
   totalQuantity: z.coerce.number().min(0, 'Initial stock cannot be negative.'),
   unit: z.string().trim().min(1, 'Unit is required.'),
   costPerUnit: z.coerce.number().min(0).optional().default(0),
+  lowStockThreshold: z.coerce.number().min(0).optional().default(0),
   performedBy: z.string().trim().optional(),
   description: z.string().trim().optional(),
+});
+
+export const updateInventoryItemSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  unit: z.string().trim().min(1).optional(),
+  costPerUnit: z.coerce.number().min(0).optional(),
+  lowStockThreshold: z.coerce.number().min(0).optional(),
+  preferredVendorId: z.string().trim().nullable().optional(),
+  reorderQuantity: z.coerce.number().min(0).optional(),
+  barcode: z.string().trim().nullable().optional(),
 });
 
 export const restockSchema = z
@@ -68,6 +103,13 @@ export const restockSchema = z
     },
     { message: 'Invalid quantity value' }
   );
+
+export const logWasteSchema = z.object({
+  quantity: z.coerce.number().positive('Enter the amount wasted, greater than 0.'),
+  wasteReason: z.enum(['spoilage', 'breakage', 'staff-meal', 'other']),
+  performedBy: z.string().trim().optional(),
+  description: z.string().trim().optional(),
+});
 
 export const createTableSchema = z.object({
   number: z.coerce.number().int('Table number must be a whole number.'),
@@ -87,6 +129,8 @@ const orderItemInputSchema = z.object({
   name: z.string().optional(),
   price: z.coerce.number().optional(),
   quantity: z.coerce.number().optional(),
+  bumped: z.boolean().optional(),
+  seatNumber: z.coerce.number().int().positive().nullable().optional(),
 });
 
 export const saveOrderSchema = z.object({
@@ -110,9 +154,72 @@ export const partialCreditPaySchema = z.object({
   note: z.string().trim().optional(),
 });
 
+export const applyDiscountSchema = z
+  .object({
+    type: z.enum(['percent', 'flat']).nullable(),
+    value: z.coerce.number().min(0).optional().default(0),
+    reason: z.string().trim().max(200).optional().default(''),
+  })
+  .refine((data) => data.type !== 'percent' || data.value <= 100, {
+    message: 'A percentage discount cannot exceed 100%.',
+    path: ['value'],
+  });
+
+export const refundOrderSchema = z.object({
+  reason: z.string().trim().min(1, 'A reason is required to refund an order.').max(300),
+});
+
+export const applyTipSchema = z
+  .object({
+    type: z.enum(['percent', 'flat']).nullable(),
+    value: z.coerce.number().min(0).optional().default(0),
+  })
+  .refine((data) => data.type !== 'percent' || data.value <= 100, {
+    message: 'A percentage tip cannot exceed 100%.',
+    path: ['value'],
+  });
+
 export const fullSettleSchema = z.object({
   customerPhone: z.string().trim().optional(),
   customerName: z.string().trim().optional(),
+});
+
+export const updateRestaurantSchema = z.object({
+  name: z.string().trim().min(1, 'Restaurant name is required.').optional(),
+  logoUrl: z.string().trim().optional(),
+  currency: z.string().trim().min(1).max(10).optional(),
+  taxRatePercent: z.coerce.number().min(0).max(100).optional(),
+  loyaltyEarnRatePerRs: z.coerce.number().min(0).optional(),
+  loyaltyPointValueRs: z.coerce.number().min(0).optional(),
+});
+
+export const attachOrderCustomerSchema = z.object({
+  customerPhone: z.string().trim().min(1, 'A phone number is required to attach a customer.'),
+  customerName: z.string().trim().optional(),
+});
+
+export const redeemPointsSchema = z.object({
+  points: z.coerce.number().int().positive('Enter a positive number of points to redeem.'),
+});
+
+export const createReservationSchema = z.object({
+  customerName: z.string().trim().min(1, 'A name is required.'),
+  customerPhone: z.string().trim().optional(),
+  partySize: z.coerce.number().int().positive('Party size must be at least 1.'),
+  reservationTime: z.coerce.date({ errorMap: () => ({ message: 'A valid reservation date/time is required.' }) }),
+  notes: z.string().trim().max(500).optional(),
+});
+
+export const addToWaitlistSchema = z.object({
+  customerName: z.string().trim().min(1, 'A name is required.'),
+  customerPhone: z.string().trim().optional(),
+  partySize: z.coerce.number().int().positive('Party size must be at least 1.'),
+  notes: z.string().trim().max(500).optional(),
+});
+
+export const updateReservationStatusSchema = z.object({
+  status: z.enum(['pending', 'confirmed', 'seated', 'cancelled', 'no-show']),
+  tableId: z.string().trim().optional(),
 });
 
 export const createLocationSchema = z.object({
@@ -185,6 +292,11 @@ export const createShiftSchema = z
 export const checklistTemplateSchema = z.object({
   name: z.string().trim().min(1, 'Checklist name is required.'),
   items: z.array(z.string().trim().min(1)).min(1, 'At least one checklist item is required.'),
+});
+
+export const updateCustomerSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required.').optional(),
+  phone: z.string().trim().optional(),
 });
 
 export const attendanceSchema = z.object({

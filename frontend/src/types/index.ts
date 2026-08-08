@@ -5,6 +5,11 @@ export interface InventoryItem {
   totalQuantity: number;
   unit: 'kg' | 'g' | 'liters' | 'units' | string;
   costPerUnit: number;
+  lowStockThreshold?: number;
+  isLowStock?: boolean;
+  preferredVendorId?: string | null;
+  reorderQuantity?: number;
+  barcode?: string | null;
 }
 
 export interface RecipeItem {
@@ -37,6 +42,8 @@ export interface OrderItem {
   price: number;
   quantity: number;
   recipe?: RecipeItem[];
+  bumped?: boolean;
+  seatNumber?: number | null;
 }
 
 export interface Order {
@@ -44,12 +51,27 @@ export interface Order {
   _id?: string;
   tableId: string;
   items: OrderItem[];
-  status: 'pending' | 'paid' | 'completed' | 'cancelled' | 'unsettled' | 'settled';
+  status: 'pending' | 'paid' | 'completed' | 'cancelled' | 'credit' | 'unsettled' | 'settled' | 'refunded';
   subtotal?: number;
+  remainingBalance?: number;
+  refundHistory?: { amount: number; reason: string; refundedBy: string; createdAt: string }[];
+  refundedAt?: string;
+  discount?: {
+    type: 'percent' | 'flat' | null;
+    value: number;
+    reason: string;
+    amount: number;
+  };
+  tip?: {
+    type: 'percent' | 'flat' | null;
+    value: number;
+    amount: number;
+  };
   tax?: number;
   total?: number;
   totalAmount?: number;
   paymentMethod?: 'cash' | 'fonepay' | 'split' | 'credit' | string;
+  customerId?: string | null;
   customerName?: string;
   customerPhone?: string;
   createdAt?: string;

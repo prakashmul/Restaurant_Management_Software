@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { PosPage } from '../features/pos/PosPage';
+import { KitchenDisplayPage } from '../features/kitchen/KitchenDisplayPage';
+import { ReservationsPage } from '../features/reservations/ReservationsPage';
 import { InventoryPage } from '../features/inventory/InventoryPage';
 import { Sidebar } from '../shared/components/Sidebar';
 import { Header } from '../shared/components/Header';
@@ -15,6 +17,8 @@ import { AuditLogPage } from '../features/audit-log/AuditLogPage';
 import { LocationsPage } from '../features/locations/LocationsPage';
 import { HeadOfficePage } from '../features/head-office/HeadOfficePage';
 import { TransfersPage } from '../features/transfers/TransfersPage';
+import { CustomersPage } from '../features/customers/CustomersPage';
+import { SettingsPage } from '../features/settings/SettingsPage';
 import { LoginModal } from '../auth/LoginModal';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { AuthProvider, useAuth } from '../auth/AuthContext';
@@ -99,6 +103,8 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/pos" element={<PosPage />} />
+            <Route path="/kitchen" element={<KitchenDisplayPage />} />
+            <Route path="/reservations" element={<ReservationsPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/credits" element={<CreditLedgerPage />} />
@@ -111,6 +117,8 @@ function AppShell() {
             <Route path="/audit-log" element={<AuditLogPage />} />
             <Route path="/locations" element={<LocationsPage />} />
             <Route path="/head-office" element={<HeadOfficePage />} />
+            <Route path="/customers" element={<CustomersPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

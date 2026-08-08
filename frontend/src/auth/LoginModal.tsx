@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Mail, X, LogIn, UserPlus, User, Store, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Lock, Mail, X, LogIn, UserPlus, User, Store, AlertCircle, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { API_ROOT } from '../api/posApi';
 import type { AuthRestaurant } from './AuthContext';
 
@@ -29,12 +29,21 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const [requiresTotp, setRequiresTotp] = useState(false);
+  const [totpToken, setTotpToken] = useState('');
+
   if (!isOpen) return null;
 
   const toggleMode = () => {
     setIsSignUp(!isSignUp);
     setError('');
     setSuccessMessage('');
+  };
+
+  const cancelTotpStep = () => {
+    setRequiresTotp(false);
+    setTotpToken('');
+    setError('');
   };
 
   const API_BASE_URL = `${API_ROOT}/api/auth`;
@@ -63,7 +72,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       setLoading(true);
 
       const endpoint = isSignUp ? `${API_BASE_URL}/register` : `${API_BASE_URL}/login`;
-      const payload = isSignUp ? { name, email, password, restaurantName } : { email, password };
+      const payload = isSignUp
+        ? { name, email, password, restaurantName }
+        : requiresTotp
+        ? { email, password, totpToken }
+        : { email, password };
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -92,12 +105,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         setPassword('');
         setIsSignUp(false);
         setSuccessMessage('Restaurant created successfully! Please sign in.');
+      } else if (data.requiresTotp) {
+        // Correct password, but this account has 2FA enabled — the same
+        // form resubmits with a totpToken once the user enters it, rather
+        // than issuing any token yet (no separate pending-session state).
+        setRequiresTotp(true);
       } else {
         // Success flow for Login — AuthContext owns writing to storage.
         onLoginSuccess(data.user, data.token, data.restaurant);
 
         setEmail('');
         setPassword('');
+        setRequiresTotp(false);
+        setTotpToken('');
       }
     } catch (err: any) {
       console.error('Auth Error:', err);
@@ -123,13 +143,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
         <div className="text-center space-y-2 mb-6">
           <div className="w-12 h-12 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto">
-            {isSignUp ? <UserPlus className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
+            {requiresTotp ? <ShieldCheck className="w-6 h-6" /> : isSignUp ? <UserPlus className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
           </div>
           <h2 className="text-xl font-bold text-white tracking-tight">
-            {isSignUp ? 'Register Your Restaurant' : 'Sign In'}
+            {requiresTotp ? 'Two-Factor Authentication' : isSignUp ? 'Register Your Restaurant' : 'Sign In'}
           </h2>
           <p className="text-xs text-slate-400">
-            {isSignUp
+            {requiresTotp
+              ? 'Enter the 6-digit code from your authenticator app'
+              : isSignUp
               ? 'Create your restaurant and become its Owner'
               : 'Enter your staff credentials to access POS controls'}
           </p>
@@ -150,6 +172,26 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {requiresTotp ? (
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Authentication Code</label>
+              <div className="relative">
+                <ShieldCheck className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoFocus
+                  required
+                  value={totpToken}
+                  onChange={(e) => setTotpToken(e.target.value.replace(/\D/g, ''))}
+                  placeholder="123456"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 tracking-widest text-center font-mono focus:outline-none focus:border-indigo-500 transition"
+                />
+              </div>
+            </div>
+          ) : (
+            <>
           {isSignUp && (
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">
@@ -221,6 +263,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               />
             </div>
           </div>
+            </>
+          )}
+
+          {requiresTotp && (
+            <button
+              type="button"
+              onClick={cancelTotpStep}
+              className="text-xs text-slate-400 hover:text-slate-200 underline underline-offset-2"
+            >
+              Back to sign in
+            </button>
+          )}
 
           <button
             type="submit"
@@ -229,6 +283,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           >
             {loading ? (
               'Processing...'
+            ) : requiresTotp ? (
+              <>
+                <ShieldCheck className="w-4 h-4" /> Verify
+              </>
             ) : isSignUp ? (
               <>
                 <UserPlus className="w-4 h-4" /> Create Restaurant
@@ -241,6 +299,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </button>
         </form>
 
+        {!requiresTotp && (
         <div className="mt-5 text-center text-xs text-slate-400">
           {isSignUp ? (
             <p>
@@ -266,6 +325,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </p>
           )}
         </div>
+        )}
 
       </div>
     </div>

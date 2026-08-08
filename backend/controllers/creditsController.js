@@ -9,6 +9,11 @@ export async function getCreditLedger(req, res) {
     const creditOrders = await Order.find({
       restaurantId,
       ...(locationId ? { locationId } : {}),
+      // paymentMethod: 'credit' alone catches legacy orders whose status
+      // field predates this enum, but a refunded order keeps that same
+      // paymentMethod from before the refund — status is what actually
+      // reflects the ledger-relevant state now, so it always wins here.
+      status: { $ne: 'refunded' },
       $or: [{ paymentMethod: 'credit' }, { status: { $in: ['credit', 'unsettled', 'settled'] } }],
     });
 

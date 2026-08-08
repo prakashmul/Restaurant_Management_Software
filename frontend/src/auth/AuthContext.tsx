@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { posApi } from '../api/posApi';
 
 export interface AuthUser {
   name: string;
@@ -18,6 +19,8 @@ export interface AuthRestaurant {
   logoUrl?: string;
   currency?: string;
   taxRatePercent?: number;
+  loyaltyEarnRatePerRs?: number;
+  loyaltyPointValueRs?: number;
   geofence?: {
     latitude: number | null;
     longitude: number | null;
@@ -44,8 +47,15 @@ interface AuthContextValue {
   currentLocation: AuthLocation | null;
   isOwner: boolean;
   isLocationRestricted: boolean;
+  // The current user's own role's granted permission keys — fetched once
+  // after login (see AuthProvider). Owners always pass regardless of this
+  // list, since the Owner role isn't user-editable and always has every
+  // permission. This is a UI hint only; the backend is the real gate and
+  // re-checks fresh on every request regardless of what this says.
+  hasPermission: (key: string) => boolean;
   login: (user: AuthUser, token: string, restaurant?: AuthRestaurant | null) => void;
   setCurrentLocation: (location: AuthLocation | null) => void;
+  updateRestaurant: (patch: Partial<AuthRestaurant>) => void;
   logout: () => void;
 }
 
@@ -89,6 +99,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(readStoredUser);
   const [currentRestaurant, setCurrentRestaurant] = useState<AuthRestaurant | null>(readStoredRestaurant);
   const [currentLocation, setCurrentLocationState] = useState<AuthLocation | null>(readStoredLocation);
+  const [permissions, setPermissions] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setPermissions([]);
+      return;
+    }
+    let cancelled = false;
+    posApi
+      .getRoles()
+      .then((roles) => {
+        if (cancelled) return;
+        const myRole = roles.find((r) => r.name === currentUser.role);
+        setPermissions(myRole?.permissions || []);
+      })
+      .catch(() => {
+        if (!cancelled) setPermissions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
 
   const login = useCallback((user: AuthUser, token: string, restaurant?: AuthRestaurant | null) => {
     localStorage.setItem('currentUser', JSON.stringify(user));
@@ -119,6 +151,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentLocationState(location);
   }, []);
 
+  const updateRestaurant = useCallback((patch: Partial<AuthRestaurant>) => {
+    setCurrentRestaurant((prev) => {
+      const next = { ...(prev || {}), ...patch } as AuthRestaurant;
+      localStorage.setItem('currentRestaurant', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem('currentUser');
     localStorage.removeItem('authToken');
@@ -132,6 +172,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isOwner = currentUser?.role?.toLowerCase() === 'owner';
   const isLocationRestricted = !!currentUser?.locationId;
 
+  const hasPermission = useCallback(
+    (key: string) => isOwner || permissions.includes(key),
+    [isOwner, permissions]
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -140,8 +185,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentLocation,
         isOwner,
         isLocationRestricted,
+        hasPermission,
         login,
         setCurrentLocation,
+        updateRestaurant,
         logout,
       }}
     >

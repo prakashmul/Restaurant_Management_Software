@@ -197,6 +197,31 @@ export interface PurchaseOrder {
   reconciledAt: string | null;
 }
 
+export interface PriceHistoryEntry {
+  purchaseOrderId: string;
+  vendorId: string;
+  vendorName: string;
+  unitCost: number;
+  quantity: number;
+  receivedAt: string | null;
+}
+
+export interface SuggestedOrderItem {
+  inventoryItemId: string;
+  itemName: string;
+  unit: string;
+  currentQuantity: number;
+  lowStockThreshold: number;
+  reorderQuantity: number;
+  unitCost: number;
+}
+
+export interface SuggestedOrder {
+  vendorId: string;
+  vendorName: string;
+  items: SuggestedOrderItem[];
+}
+
 export type TransferStatus = 'in_transit' | 'received' | 'cancelled';
 
 export interface TransferItem {
@@ -218,6 +243,46 @@ export interface Transfer {
   createdAt: string;
   receivedAt: string | null;
   cancelledAt: string | null;
+}
+
+export interface CustomerProfile {
+  _id: string;
+  name: string;
+  phone: string;
+  locationId: string;
+  ordersCount: number;
+  lifetimeSpend: number;
+  outstandingCredit: number;
+  lastOrderAt: string | null;
+  pointsEarned: number;
+  pointsRedeemed: number;
+  pointsBalance: number;
+}
+
+export interface CustomerDetail {
+  customer: { _id: string; name: string; phone: string; locationId: string };
+  stats: {
+    ordersCount: number;
+    lifetimeSpend: number;
+    outstandingCredit: number;
+    pointsEarned: number;
+    pointsRedeemed: number;
+    pointsBalance: number;
+  };
+  orders: Order[];
+}
+
+export interface Reservation {
+  _id: string;
+  type: 'reservation' | 'waitlist';
+  customerName: string;
+  customerPhone: string;
+  partySize: number;
+  reservationTime: string | null;
+  status: 'pending' | 'confirmed' | 'waiting' | 'seated' | 'cancelled' | 'no-show';
+  tableId: string | null;
+  notes: string;
+  createdAt: string;
 }
 
 export interface Shift {
@@ -263,16 +328,37 @@ export interface ChecklistCompletion {
   totalCount: number;
 }
 
-export type StaffRole = 'Owner' | 'Manager' | 'Cashier' | 'Waiter' | 'Kitchen';
-
 export interface StaffMember {
   id: string;
   userId: string;
   name: string;
   email: string;
-  role: StaffRole;
+  role: string;
+  roleId: string;
+  locationId: string | null;
   status: 'active' | 'invited';
+  hourlyRate: number;
   joinedAt: string;
+}
+
+export interface Permission {
+  key: string;
+  label: string;
+}
+
+export interface PermissionSection {
+  key: string;
+  label: string;
+  permissions: Permission[];
+}
+
+export interface Role {
+  _id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  isOwnerRole: boolean;
+  userCount: number;
 }
 
 export const posApi = {
@@ -310,9 +396,23 @@ export const posApi = {
     totalQuantity: number;
     unit: string;
     costPerUnit: number;
+    lowStockThreshold?: number;
     performedBy: string;
     description: string;
   }) => API.post<InventoryItem>('/inventory', itemData).then((r) => r.data),
+
+  updateInventoryItem: (
+    id: any,
+    data: {
+      name?: string;
+      unit?: string;
+      costPerUnit?: number;
+      lowStockThreshold?: number;
+      preferredVendorId?: string | null;
+      reorderQuantity?: number;
+      barcode?: string | null;
+    }
+  ) => API.patch<InventoryItem>(`/inventory/${cleanId(id)}`, data).then((r) => r.data),
 
   // Tables
   getTables: () => API.get<Table[]>('/tables').then((r) => r.data),
@@ -325,11 +425,16 @@ export const posApi = {
 
   deleteTable: (id: any) => API.delete(`/tables/${cleanId(id)}`).then((r) => r.data),
 
-  cancelTableOrder: (tableId: any) =>
-    API.delete(`/orders/table/${cleanId(tableId)}`).then((r) => r.data),
+  cancelTableOrder: (tableId: any, reason?: string) =>
+    API.delete(`/orders/table/${cleanId(tableId)}`, { data: { reason } }).then((r) => r.data),
 
   // Orders (Fixed Object ID Serialization & Sanitization)
   getOrders: () => API.get<Order[]>('/orders').then((r) => r.data),
+
+  getKitchenOrders: () => API.get<Order[]>('/orders/kitchen').then((r) => r.data),
+
+  bumpOrderItem: (orderId: any, itemId: any) =>
+    API.patch<Order>(`/orders/${cleanId(orderId)}/items/${cleanId(itemId)}/bump`).then((r) => r.data),
 
   saveOrder: (
     tableId: any,
@@ -362,7 +467,17 @@ export const posApi = {
     ).then((r) => r.data);
   },
 
-  deleteOrder: (orderId: any) => API.delete(`/orders/${cleanId(orderId)}`).then((r) => r.data),
+  deleteOrder: (orderId: any, reason?: string) =>
+    API.delete(`/orders/${cleanId(orderId)}`, { data: { reason } }).then((r) => r.data),
+
+  applyDiscount: (orderId: any, data: { type: 'percent' | 'flat' | null; value?: number; reason?: string }) =>
+    API.patch<Order>(`/orders/${cleanId(orderId)}/discount`, data).then((r) => r.data),
+
+  applyTip: (orderId: any, data: { type: 'percent' | 'flat' | null; value?: number }) =>
+    API.patch<Order>(`/orders/${cleanId(orderId)}/tip`, data).then((r) => r.data),
+
+  refundOrder: (orderId: any, reason: string) =>
+    API.patch<Order>(`/orders/${cleanId(orderId)}/refund`, { reason }).then((r) => r.data),
 
   // Credit Ledger Integration
   processFullCredit: (orderId: any, customerName: string, customerPhone: string) => {
@@ -395,6 +510,22 @@ export const posApi = {
       performedBy: meta?.performedBy,
       description: meta?.description,
     }).then((r) => r.data),
+
+  logWaste: (
+    id: any,
+    quantity: number,
+    wasteReason: 'spoilage' | 'breakage' | 'staff-meal' | 'other',
+    meta?: { performedBy?: string; description?: string }
+  ) =>
+    API.patch<InventoryItem>(`/inventory/${cleanId(id)}/waste`, {
+      quantity,
+      wasteReason,
+      performedBy: meta?.performedBy,
+      description: meta?.description,
+    }).then((r) => r.data),
+
+  getPriceHistory: (id: any) =>
+    API.get<PriceHistoryEntry[]>(`/inventory/${cleanId(id)}/price-history`).then((r) => r.data),
 
   // Inventory History
   getStockHistory: () => API.get<StockHistoryLog[]>('/inventory/history').then((r) => r.data),
@@ -429,13 +560,32 @@ export const posApi = {
   // Staff & Roles
   getStaff: () => API.get<StaffMember[]>('/staff').then((r) => r.data),
 
-  inviteStaff: (data: { name: string; email: string; password: string; role: StaffRole }) =>
+  inviteStaff: (data: { name: string; email: string; password: string; roleId: string; locationId?: string | null }) =>
     API.post<StaffMember>('/staff/invite', data).then((r) => r.data),
 
-  updateStaffRole: (staffId: string, role: StaffRole) =>
-    API.patch<StaffMember>(`/staff/${staffId}/role`, { role }).then((r) => r.data),
+  updateStaffRole: (staffId: string, roleId: string) =>
+    API.patch<StaffMember>(`/staff/${staffId}/role`, { roleId }).then((r) => r.data),
+
+  updateStaffRate: (staffId: string, hourlyRate: number) =>
+    API.patch<StaffMember>(`/staff/${staffId}/rate`, { hourlyRate }).then((r) => r.data),
 
   removeStaff: (staffId: string) => API.delete(`/staff/${staffId}`).then((r) => r.data),
+
+  exportPayrollCsv: (filters: { startDate?: string; endDate?: string } = {}) =>
+    API.get('/staff/payroll/export', { params: filters, responseType: 'blob' }).then((r) => r.data as Blob),
+
+  // Roles & Permissions
+  getPermissionCatalog: () => API.get<PermissionSection[]>('/roles/permissions').then((r) => r.data),
+
+  getRoles: () => API.get<Role[]>('/roles').then((r) => r.data),
+
+  createRole: (data: { name: string; description?: string; permissions: string[] }) =>
+    API.post<Role>('/roles', data).then((r) => r.data),
+
+  updateRole: (id: string, data: { name?: string; description?: string; permissions?: string[] }) =>
+    API.patch<Role>(`/roles/${id}`, data).then((r) => r.data),
+
+  deleteRole: (id: string) => API.delete(`/roles/${id}`).then((r) => r.data),
 
   // Recipe Costing & Menu Engineering
   getMenuEngineering: (days: number = 30) =>
@@ -469,6 +619,8 @@ export const posApi = {
     API.get<ScheduleVariance>('/scheduling/variance', { params: { start, end } }).then((r) => r.data),
 
   // Procurement & Vendors
+  getSuggestedOrders: () => API.get<SuggestedOrder[]>('/procurement/suggested-orders').then((r) => r.data),
+
   getVendors: () => API.get<Vendor[]>('/procurement/vendors').then((r) => r.data),
 
   createVendor: (data: { name: string; category: string; contactPhone?: string; contactEmail?: string }) =>
@@ -492,8 +644,9 @@ export const posApi = {
   deletePurchaseOrder: (id: string) => API.delete(`/procurement/purchase-orders/${id}`).then((r) => r.data),
 
   // Audit Log
-  getAuditLog: (limit: number = 50) =>
-    API.get<AuditLogEntry[]>('/audit-log', { params: { limit } }).then((r) => r.data),
+  getAuditLog: (
+    filters: { limit?: number; actorEmail?: string; q?: string; startDate?: string; endDate?: string } = {}
+  ) => API.get<AuditLogEntry[]>('/audit-log', { params: { limit: 50, ...filters } }).then((r) => r.data),
 
   // Locations
   getLocations: () => API.get<Location[]>('/locations').then((r) => r.data),
@@ -519,4 +672,76 @@ export const posApi = {
   receiveTransfer: (id: string) => API.patch<Transfer>(`/transfers/${id}/receive`).then((r) => r.data),
 
   cancelTransfer: (id: string) => API.patch<Transfer>(`/transfers/${id}/cancel`).then((r) => r.data),
+
+  // Customers
+  getCustomers: () => API.get<CustomerProfile[]>('/customers').then((r) => r.data),
+
+  getCustomer: (id: string) => API.get<CustomerDetail>(`/customers/${id}`).then((r) => r.data),
+
+  updateCustomer: (id: string, data: { name?: string; phone?: string }) =>
+    API.patch<CustomerProfile>(`/customers/${id}`, data).then((r) => r.data),
+
+  // Restaurant Settings
+  getRestaurantSettings: () => API.get<AuthRestaurantShape>('/restaurant').then((r) => r.data),
+
+  updateRestaurantSettings: (data: {
+    name?: string;
+    logoUrl?: string;
+    currency?: string;
+    taxRatePercent?: number;
+    loyaltyEarnRatePerRs?: number;
+    loyaltyPointValueRs?: number;
+  }) => API.patch<AuthRestaurantShape>('/restaurant', data).then((r) => r.data),
+
+  attachOrderCustomer: (orderId: any, data: { customerName?: string; customerPhone: string }) =>
+    API.patch<Order>(`/orders/${cleanId(orderId)}/customer`, data).then((r) => r.data),
+
+  redeemLoyaltyPoints: (orderId: any, points: number) =>
+    API.patch<{ order: Order; pointsRedeemed: number; pointsRemaining: number }>(
+      `/orders/${cleanId(orderId)}/redeem-points`,
+      { points }
+    ).then((r) => r.data),
+
+  exportOrdersCsv: (filters: { startDate?: string; endDate?: string } = {}) =>
+    API.get('/orders/export/csv', { params: filters, responseType: 'blob' }).then((r) => r.data as Blob),
+
+  // Reservations & Waitlist
+  getReservations: (status?: string) =>
+    API.get<Reservation[]>('/reservations', { params: status ? { status } : {} }).then((r) => r.data),
+
+  createReservation: (data: { customerName: string; customerPhone?: string; partySize: number; reservationTime: string; notes?: string }) =>
+    API.post<Reservation>('/reservations', data).then((r) => r.data),
+
+  addToWaitlist: (data: { customerName: string; customerPhone?: string; partySize: number; notes?: string }) =>
+    API.post<Reservation>('/reservations/waitlist', data).then((r) => r.data),
+
+  updateReservationStatus: (id: string, status: Reservation['status'], tableId?: string) =>
+    API.patch<Reservation>(`/reservations/${id}/status`, { status, tableId }).then((r) => r.data),
+
+  deleteReservation: (id: string) => API.delete(`/reservations/${id}`).then((r) => r.data),
+
+  // Two-Factor Authentication (TOTP)
+  getTotpStatus: () => API.get<{ totpEnabled: boolean }>('/auth/2fa/status').then((r) => r.data),
+
+  setupTotp: () =>
+    API.post<{ secret: string; otpauthUrl: string; qrCodeDataUrl: string }>('/auth/2fa/setup').then((r) => r.data),
+
+  enableTotp: (token: string) =>
+    API.post<{ totpEnabled: boolean }>('/auth/2fa/enable', { token }).then((r) => r.data),
+
+  disableTotp: (token: string) =>
+    API.post<{ totpEnabled: boolean }>('/auth/2fa/disable', { token }).then((r) => r.data),
 };
+
+interface AuthRestaurantShape {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  logoUrl: string;
+  currency: string;
+  taxRatePercent: number;
+  loyaltyEarnRatePerRs: number;
+  loyaltyPointValueRs: number;
+  geofence: { latitude: number | null; longitude: number | null; radiusMeters: number };
+}

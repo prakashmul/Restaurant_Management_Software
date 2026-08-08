@@ -6,6 +6,8 @@ import {
 import { posApi } from '../../api/posApi';
 import { useAuth } from '../../auth/AuthContext';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { LowStockWidget } from './LowStockWidget';
+import { SalesTrendChart } from './SalesTrendChart';
 
 const STORAGE_KEY = 'pos_active_shift_session';
 
@@ -105,7 +107,8 @@ export const DashboardPage: React.FC = () => {
     if (isOwner) {
       fetchDashboardData();
     }
-  }, [isOwner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner, currentLocation?.id]);
 
   useRealtimeRefresh(['order'], () => {
     if (isOwner) fetchDashboardData();
@@ -195,7 +198,8 @@ export const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     loadHistory();
-  }, [isOwner, currentUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner, currentUser, currentLocation?.id]);
 
   const handleCheckOut = useCallback(async (
     statusReason: 'Completed' | 'Auto-Checked Out' = 'Completed',
@@ -469,6 +473,8 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6 bg-slate-950 text-slate-100 min-h-screen">
+      <LowStockWidget />
+
       {/* Printable Receipt Section */}
       {selectedRecordForPrint && (
         <div id="printable-receipt" className="hidden print:block font-mono text-black p-4 bg-white w-[320px] mx-auto text-xs leading-tight">
@@ -616,6 +622,8 @@ export const DashboardPage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          <SalesTrendChart orders={orders} />
         </div>
       )}
 

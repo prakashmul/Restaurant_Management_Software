@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
+import { generate as generateTotp } from 'otplib';
 import { setupTestApp } from './helpers/testApp.js';
 
 let app;
@@ -108,5 +109,103 @@ describe('auth', () => {
     });
     expect(res.body.user.password).toBeUndefined();
     expect(JSON.stringify(res.body)).not.toContain('testpassword123');
+  });
+});
+
+describe('TOTP two-factor authentication', () => {
+  const email = 'totp-user@example.com';
+  const password = 'testpassword123';
+  let token;
+  let secret;
+
+  beforeAll(async () => {
+    await request(app).post('/api/auth/register').send({
+      name: 'Totp User',
+      email,
+      password,
+      restaurantName: 'Totp Diner',
+    });
+    const loginRes = await request(app).post('/api/auth/login').send({ email, password });
+    token = loginRes.body.token;
+  });
+
+  it('reports 2FA as disabled by default', async () => {
+    const res = await request(app).get('/api/auth/2fa/status').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.totpEnabled).toBe(false);
+  });
+
+  it('rejects enabling 2FA with a wrong code', async () => {
+    const setupRes = await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`);
+    expect(setupRes.status).toBe(200);
+    secret = setupRes.body.secret;
+    expect(secret).toBeTruthy();
+
+    const res = await request(app)
+      .post('/api/auth/2fa/enable')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ token: '000000' });
+    expect(res.status).toBe(400);
+  });
+
+  it('does not gate login while setup is unconfirmed', async () => {
+    const res = await request(app).post('/api/auth/login').send({ email, password });
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBeTruthy();
+  });
+
+  it('lets the user confirm setup with a valid code, then requires a code at login', async () => {
+    const enableRes = await request(app)
+      .post('/api/auth/2fa/enable')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ token: await generateTotp({ secret }) });
+    expect(enableRes.status).toBe(200);
+    expect(enableRes.body.totpEnabled).toBe(true);
+
+    const statusRes = await request(app).get('/api/auth/2fa/status').set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.totpEnabled).toBe(true);
+
+    const loginNoCodeRes = await request(app).post('/api/auth/login').send({ email, password });
+    expect(loginNoCodeRes.status).toBe(200);
+    expect(loginNoCodeRes.body.requiresTotp).toBe(true);
+    expect(loginNoCodeRes.body.token).toBeUndefined();
+
+    const loginBadCodeRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password, totpToken: '000000' });
+    expect(loginBadCodeRes.status).toBe(400);
+
+    const loginGoodCodeRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password, totpToken: await generateTotp({ secret }) });
+    expect(loginGoodCodeRes.status).toBe(200);
+    expect(loginGoodCodeRes.body.token).toBeTruthy();
+  });
+
+  it('refuses to start a new setup while 2FA is already enabled', async () => {
+    const res = await request(app).post('/api/auth/2fa/setup').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects disabling 2FA with a wrong code, then disables with a correct one', async () => {
+    const badRes = await request(app)
+      .post('/api/auth/2fa/disable')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ token: '000000' });
+    expect(badRes.status).toBe(400);
+
+    const statusRes = await request(app).get('/api/auth/2fa/status').set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.totpEnabled).toBe(true);
+
+    const goodRes = await request(app)
+      .post('/api/auth/2fa/disable')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ token: await generateTotp({ secret }) });
+    expect(goodRes.status).toBe(200);
+    expect(goodRes.body.totpEnabled).toBe(false);
+
+    const loginRes = await request(app).post('/api/auth/login').send({ email, password });
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.token).toBeTruthy();
   });
 });

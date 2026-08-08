@@ -3,6 +3,7 @@ import { Building2, TrendingUp, TrendingDown, ShieldAlert } from 'lucide-react';
 import { posApi } from '../../api/posApi';
 import type { HeadOfficeLocationSummary } from '../../api/posApi';
 import { useAuth } from '../../auth/AuthContext';
+import { LocationTrendChart } from './LocationTrendChart';
 
 const STATUS_META: Record<HeadOfficeLocationSummary['foodCostStatus'], { label: string; classes: string }> = {
   good: { label: 'On target', classes: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
@@ -121,6 +122,8 @@ export const HeadOfficePage: React.FC = () => {
               );
             })}
           </div>
+
+          <LocationTrendChart locations={locations} />
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">

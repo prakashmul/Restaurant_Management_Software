@@ -7,6 +7,7 @@ import StockHistory from '../models/StockHistory.js';
 import User from '../models/User.js';
 import { emitChange } from '../realtime/socket.js';
 import { logAudit } from '../services/auditService.js';
+import { attachStockQuantities } from './inventoryController.js';
 
 const ALLOWED_TRANSITIONS = {
   draft: ['sent'],
@@ -14,6 +15,55 @@ const ALLOWED_TRANSITIONS = {
   received: ['reconciled'],
   reconciled: [],
 };
+
+// Groups every low-stock item that has both a preferred vendor and a target
+// reorder quantity configured (see Inventory.preferredVendorId/reorderQuantity)
+// into one draft-PO suggestion per vendor. An item missing either field is
+// left out — there's nothing actionable to draft without both.
+export async function getSuggestedOrders(req, res) {
+  try {
+    const { restaurantId, locationId } = req;
+    const inventory = await Inventory.find({
+      restaurantId,
+      preferredVendorId: { $ne: null },
+      reorderQuantity: { $gt: 0 },
+    });
+    if (inventory.length === 0) return res.json([]);
+
+    const withStock = await attachStockQuantities(inventory, restaurantId, locationId);
+    const lowStockItems = withStock.filter((i) => i.isLowStock);
+    if (lowStockItems.length === 0) return res.json([]);
+
+    const vendorIds = [...new Set(lowStockItems.map((i) => i.preferredVendorId.toString()))];
+    const vendors = await Vendor.find({ _id: { $in: vendorIds }, restaurantId });
+    const vendorById = new Map(vendors.map((v) => [v._id.toString(), v]));
+
+    const suggestionsByVendor = new Map();
+    for (const item of lowStockItems) {
+      const vendorId = item.preferredVendorId.toString();
+      const vendor = vendorById.get(vendorId);
+      if (!vendor) continue; // vendor deleted since being set as preferred
+
+      if (!suggestionsByVendor.has(vendorId)) {
+        suggestionsByVendor.set(vendorId, { vendorId, vendorName: vendor.name, items: [] });
+      }
+      suggestionsByVendor.get(vendorId).items.push({
+        inventoryItemId: item._id,
+        itemName: item.name,
+        unit: item.unit,
+        currentQuantity: item.totalQuantity,
+        lowStockThreshold: item.lowStockThreshold,
+        reorderQuantity: item.reorderQuantity,
+        unitCost: item.costPerUnit,
+      });
+    }
+
+    res.json(Array.from(suggestionsByVendor.values()));
+  } catch (err) {
+    req.log.error({ err }, 'Error computing suggested purchase orders');
+    res.status(500).json({ error: 'Failed to compute suggested purchase orders' });
+  }
+}
 
 export async function listVendors(req, res) {
   try {

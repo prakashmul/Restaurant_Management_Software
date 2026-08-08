@@ -6,7 +6,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 export const ChecklistsPage: React.FC = () => {
-  const { isOwner, currentUser } = useAuth();
+  const { isOwner, currentUser, currentLocation } = useAuth();
   const canManageTemplates = isOwner || currentUser?.role === 'Manager';
 
   const [completions, setCompletions] = useState<ChecklistCompletion[]>([]);
@@ -36,7 +36,8 @@ export const ChecklistsPage: React.FC = () => {
 
   useEffect(() => {
     loadAll();
-  }, [canManageTemplates]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageTemplates, currentLocation?.id]);
 
   useRealtimeRefresh(['checklist'], loadAll);
 

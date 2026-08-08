@@ -35,7 +35,7 @@ function formatHours(seconds: number): string {
 }
 
 export const SchedulingPage: React.FC = () => {
-  const { isOwner, currentUser } = useAuth();
+  const { isOwner, currentUser, currentLocation } = useAuth();
   const canManage = isOwner || currentUser?.role === 'Manager';
 
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
@@ -79,7 +79,7 @@ export const SchedulingPage: React.FC = () => {
   useEffect(() => {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rangeStart, rangeEnd, canManage]);
+  }, [rangeStart, rangeEnd, canManage, currentLocation?.id]);
 
   useRealtimeRefresh(['shift'], loadAll);
 

@@ -6,6 +6,10 @@ const customerSchema = new mongoose.Schema(
     locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', required: true },
     name: { type: String, required: true, trim: true },
     phone: { type: String, trim: true, default: '' },
+    // Cumulative points ever redeemed — never decreases. Points *earned* are
+    // deliberately not stored here; they're derived live from lifetime spend
+    // (see customersController.js) so they can never drift from order history.
+    pointsRedeemed: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );

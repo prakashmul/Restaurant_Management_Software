@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle, FolderPlus } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle, FolderPlus, Users } from 'lucide-react';
 import { posApi } from '../../api/posApi';
 import { TableDetailModal } from './TableDetailModal';
 import { CategoryModal } from './CategoryModal';
@@ -22,6 +22,9 @@ export const PosPage = () => {
 
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [currentCart, setCurrentCart] = useState<OrderItem[]>([]);
+  // Which diner new items get added to. null = unassigned/shared (e.g. a
+  // starter for the whole table) — the default, so split-by-seat is opt-in.
+  const [activeSeat, setActiveSeat] = useState<number | null>(null);
 
   // Modal States
   const [showTableModal, setShowTableModal] = useState(false);
@@ -182,18 +185,27 @@ export const PosPage = () => {
     if (!itemId) return;
 
     setCurrentCart((prev) => {
-      const existing = prev.find((i) => getId(i.menuItemId) === itemId);
+      const existing = prev.find(
+        (i) => getId(i.menuItemId) === itemId && (i.seatNumber ?? null) === activeSeat
+      );
       if (existing) {
-        return prev.map((i) => (getId(i.menuItemId) === itemId ? { ...i, quantity: i.quantity + 1 } : i));
+        return prev.map((i) => (i === existing ? { ...i, quantity: i.quantity + 1 } : i));
       }
-      return [...prev, { menuItemId: itemId, name: item.name, price: item.price || 0, quantity: 1 }];
+      return [
+        ...prev,
+        { menuItemId: itemId, name: item.name, price: item.price || 0, quantity: 1, seatNumber: activeSeat },
+      ];
     });
   };
 
-  const updateQty = (menuItemId: string, delta: number) => {
+  const updateQty = (menuItemId: string, seatNumber: number | null, delta: number) => {
     setCurrentCart((prev) =>
       prev
-        .map((i) => (getId(i.menuItemId) === menuItemId ? { ...i, quantity: i.quantity + delta } : i))
+        .map((i) =>
+          getId(i.menuItemId) === menuItemId && (i.seatNumber ?? null) === seatNumber
+            ? { ...i, quantity: i.quantity + delta }
+            : i
+        )
         .filter((i) => i.quantity > 0)
     );
   };
@@ -385,35 +397,84 @@ export const PosPage = () => {
             )}
           </div>
 
-          <div className="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
+          {selectedTable && (
+            <div className="mb-3 -mt-1">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                <Users className="w-3 h-3" /> Adding items for
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  onClick={() => setActiveSeat(null)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                    activeSeat === null
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Shared
+                </button>
+                {Array.from({ length: Math.max(selectedTable.seats || 4, 1) }, (_, i) => i + 1).map((seat) => (
+                  <button
+                    key={seat}
+                    onClick={() => setActiveSeat(seat)}
+                    className={`w-8 h-7 rounded-lg text-[11px] font-bold transition ${
+                      activeSeat === seat
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {seat}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
             {currentCart.length === 0 ? (
               <div className="text-center text-slate-500 text-xs py-12">
                 Click a category card to add items to Table #{selectedTable?.number}.
               </div>
             ) : (
-              currentCart.map((item) => (
-                <div key={getId(item.menuItemId)} className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-200">{item.name}</h4>
-                    <span className="text-[10px] text-slate-400">Rs. {(item.price || 0).toFixed(2)} each</span>
+              Object.entries(
+                currentCart.reduce<Record<string, OrderItem[]>>((groups, item) => {
+                  const key = item.seatNumber != null ? `Seat ${item.seatNumber}` : 'Shared';
+                  (groups[key] ||= []).push(item);
+                  return groups;
+                }, {})
+              )
+                .sort(([a], [b]) => (a === 'Shared' ? -1 : b === 'Shared' ? 1 : a.localeCompare(b, undefined, { numeric: true })))
+                .map(([seatLabel, items]) => (
+                  <div key={seatLabel} className="space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{seatLabel}</div>
+                    {items.map((item) => (
+                      <div
+                        key={`${getId(item.menuItemId)}-${item.seatNumber ?? 'shared'}`}
+                        className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800"
+                      >
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-200">{item.name}</h4>
+                          <span className="text-[10px] text-slate-400">Rs. {(item.price || 0).toFixed(2)} each</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => updateQty(getId(item.menuItemId), item.seatNumber ?? null, -1)}
+                            className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
+                          >
+                            -
+                          </button>
+                          <span className="text-xs font-mono font-bold w-4 text-center">{item.quantity}</span>
+                          <button
+                            onClick={() => updateQty(getId(item.menuItemId), item.seatNumber ?? null, 1)}
+                            className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => updateQty(getId(item.menuItemId), -1)}
-                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
-                    >
-                      -
-                    </button>
-                    <span className="text-xs font-mono font-bold w-4 text-center">{item.quantity}</span>
-                    <button
-                      onClick={() => updateQty(getId(item.menuItemId), 1)}
-                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              ))
+                ))
             )}
           </div>
         </div>
@@ -482,8 +543,8 @@ export const PosPage = () => {
               await posApi.payOrder(orderId, paymentMethod);
             }
           }}
-          onVoidOrder={async (tableId: string) => {
-            await posApi.cancelTableOrder(tableId);
+          onVoidOrder={async (tableId: string, reason: string) => {
+            await posApi.cancelTableOrder(tableId, reason);
             setCurrentCart([]);
             setModalTable(null);
             await loadData();

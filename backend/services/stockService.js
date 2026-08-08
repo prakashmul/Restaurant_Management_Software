@@ -77,3 +77,63 @@ export async function deductStockForOrder(order, performedByTag, session) {
     }
   }
 }
+
+// Reverses deductStockForOrder — adds each recipe ingredient's quantity
+// back to the order's location. Used by refundOrder in ordersController.js.
+// Recipes are re-read fresh (not stored on the order at deduction time), so
+// an ingredient removed from a menu item's recipe after the order was
+// placed is simply skipped here too, matching what deduction actually did.
+export async function restoreStockForOrder(order, performedByTag, session) {
+  const restaurantId = order.restaurantId;
+  const locationId = order.locationId;
+
+  const menuItemIds = [...new Set(order.items.map((i) => i.menuItemId))].filter((id) =>
+    mongoose.Types.ObjectId.isValid(id)
+  );
+  const menuItems = await MenuItem.find({ _id: { $in: menuItemIds }, restaurantId }).session(session);
+  const menuItemById = new Map(menuItems.map((m) => [m._id.toString(), m]));
+
+  const ingredientIds = [
+    ...new Set(
+      menuItems.flatMap((m) => (Array.isArray(m.recipe) ? m.recipe.map((r) => r.inventoryItemId?.toString()) : []))
+    ),
+  ].filter(Boolean);
+  const inventoryItems = await Inventory.find({ _id: { $in: ingredientIds }, restaurantId }).session(session);
+  const inventoryById = new Map(inventoryItems.map((i) => [i._id.toString(), i]));
+
+  for (const orderItem of order.items) {
+    const menuItem = menuItemById.get(orderItem.menuItemId);
+    if (!menuItem || !Array.isArray(menuItem.recipe)) continue;
+
+    for (const recipeIngredient of menuItem.recipe) {
+      if (!recipeIngredient.inventoryItemId) continue;
+
+      const invItem = inventoryById.get(recipeIngredient.inventoryItemId.toString());
+      if (!invItem) continue;
+
+      const totalRestore = recipeIngredient.quantityPerPortion * orderItem.quantity;
+
+      await Stock.findOneAndUpdate(
+        { restaurantId, locationId, inventoryItemId: invItem._id },
+        { $inc: { totalQuantity: totalRestore } },
+        { session }
+      );
+
+      await StockHistory.create(
+        [
+          {
+            restaurantId,
+            locationId,
+            itemId: invItem._id,
+            itemName: invItem.name,
+            quantity: totalRestore,
+            unit: invItem.unit,
+            performedBy: performedByTag,
+            description: `Restored from refund of Order #${order._id.toString().slice(-4)}`,
+          },
+        ],
+        { session }
+      );
+    }
+  }
+}

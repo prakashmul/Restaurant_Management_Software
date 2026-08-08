@@ -1,16 +1,22 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { setupTestApp } from './helpers/testApp.js';
-import { createAuthedUser } from './helpers/auth.js';
+import { createAuthedUser, authedRequest } from './helpers/auth.js';
 
 let app;
 let teardown;
 let ownerToken;
 let ownerUserId;
+let ownerLocationId;
+let roleIdByName;
 
 beforeAll(async () => {
   ({ app, teardown } = await setupTestApp());
-  ({ token: ownerToken, userId: ownerUserId } = await createAuthedUser(app));
+  ({ token: ownerToken, userId: ownerUserId, locationId: ownerLocationId } = await createAuthedUser(app));
+
+  const asOwnerReq = (req) => req.set('Authorization', `Bearer ${ownerToken}`);
+  const rolesRes = await asOwnerReq(request(app).get('/api/roles'));
+  roleIdByName = new Map(rolesRes.body.map((r) => [r.name, r._id]));
 }, 60000);
 
 afterAll(async () => {
@@ -33,7 +39,7 @@ describe('staff management', () => {
       name: 'New Waiter',
       email: 'waiter-invite@example.com',
       password: 'testpassword123',
-      role: 'Waiter',
+      roleId: roleIdByName.get('Waiter'),
     });
     expect(res.status).toBe(201);
     expect(res.body.role).toBe('Waiter');
@@ -47,11 +53,12 @@ describe('staff management', () => {
     expect(loginRes.status).toBe(200);
     expect(loginRes.body.user.role).toBe('Waiter');
 
+    // Waiter doesn't have staff.view by default (matches the design mockup)
+    // — viewing the staff list is an Owner/Manager thing.
     const staffRes = await request(app)
       .get('/api/staff')
       .set('Authorization', `Bearer ${loginRes.body.token}`);
-    expect(staffRes.status).toBe(200);
-    expect(staffRes.body.length).toBe(2);
+    expect(staffRes.status).toBe(403);
   });
 
   it('rejects a non-Owner from inviting staff', async () => {
@@ -59,7 +66,7 @@ describe('staff management', () => {
     const res = await request(app)
       .post('/api/staff/invite')
       .set('Authorization', `Bearer ${waiterToken}`)
-      .send({ name: 'X', email: 'nope@example.com', password: 'testpassword123', role: 'Manager' });
+      .send({ name: 'X', email: 'nope@example.com', password: 'testpassword123', roleId: roleIdByName.get('Manager') });
     expect(res.status).toBe(403);
   });
 
@@ -68,7 +75,7 @@ describe('staff management', () => {
       name: 'New Waiter',
       email: 'waiter-invite@example.com',
       password: 'testpassword123',
-      role: 'Cashier',
+      roleId: roleIdByName.get('Cashier'),
     });
     expect(res.status).toBe(400);
   });
@@ -77,7 +84,9 @@ describe('staff management', () => {
     const listRes = await asOwner(request(app).get('/api/staff'));
     const waiter = listRes.body.find((s) => s.email === 'waiter-invite@example.com');
 
-    const res = await asOwner(request(app).patch(`/api/staff/${waiter.id}/role`)).send({ role: 'Manager' });
+    const res = await asOwner(request(app).patch(`/api/staff/${waiter.id}/role`)).send({
+      roleId: roleIdByName.get('Manager'),
+    });
     expect(res.status).toBe(200);
     expect(res.body.role).toBe('Manager');
   });
@@ -107,5 +116,77 @@ describe('staff management', () => {
 
     const afterList = await asOwner(request(app).get('/api/staff'));
     expect(afterList.body.some((s) => s.email === 'waiter-invite@example.com')).toBe(false);
+  });
+});
+
+describe('hourly rate & payroll export', () => {
+  it('defaults a new staff member to a zero hourly rate', async () => {
+    const res = await asOwner(request(app).get('/api/staff'));
+    expect(res.body[0].hourlyRate).toBe(0);
+  });
+
+  it('lets the Owner set a staff member\'s hourly rate', async () => {
+    const listRes = await asOwner(request(app).get('/api/staff'));
+    const owner = listRes.body.find((s) => s.role === 'Owner');
+
+    const res = await asOwner(request(app).patch(`/api/staff/${owner.id}/rate`)).send({ hourlyRate: 15.5 });
+    expect(res.status).toBe(200);
+    expect(res.body.hourlyRate).toBe(15.5);
+  });
+
+  it('rejects a negative hourly rate', async () => {
+    const listRes = await asOwner(request(app).get('/api/staff'));
+    const owner = listRes.body.find((s) => s.role === 'Owner');
+
+    const res = await asOwner(request(app).patch(`/api/staff/${owner.id}/rate`)).send({ hourlyRate: -5 });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-Owner from setting an hourly rate', async () => {
+    const { token: waiterToken } = await createAuthedUser(app, { role: 'Waiter' });
+    const listRes = await asOwner(request(app).get('/api/staff'));
+    const owner = listRes.body.find((s) => s.role === 'Owner');
+
+    const res = await request(app)
+      .patch(`/api/staff/${owner.id}/rate`)
+      .set('Authorization', `Bearer ${waiterToken}`)
+      .send({ hourlyRate: 20 });
+    expect(res.status).toBe(403);
+  });
+
+  it('exports a payroll CSV with hours x rate computed from attendance records', async () => {
+    const asOwnerAtLocation = authedRequest(ownerToken, ownerLocationId);
+    const staffRes = await asOwnerAtLocation(request(app).get('/api/staff'));
+    const owner = staffRes.body.find((s) => s.role === 'Owner');
+
+    await asOwnerAtLocation(request(app).patch(`/api/staff/${owner.id}/rate`)).send({ hourlyRate: 20 });
+
+    await asOwnerAtLocation(request(app).post('/api/attendance')).send({
+      employeeName: owner.name,
+      checkInTime: '9:00 AM',
+      checkOutTime: '1:00 PM',
+      duration: '04:00:00',
+      status: 'Completed',
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await asOwnerAtLocation(
+      request(app).get(`/api/staff/payroll/export?startDate=${today}&endDate=${today}`)
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+
+    const rows = res.text.trim().split('\r\n');
+    expect(rows[0]).toBe('Staff Member,Role,Hours Worked,Hourly Rate,Total Pay');
+    const ownerRow = rows.find((r) => r.startsWith(`${owner.name},`));
+    expect(ownerRow).toBe(`${owner.name},Owner,4.00,20.00,80.00`);
+  });
+
+  it('rejects a non-Owner from exporting payroll', async () => {
+    const { token: waiterToken } = await createAuthedUser(app, { role: 'Waiter' });
+    const res = await request(app)
+      .get('/api/staff/payroll/export')
+      .set('Authorization', `Bearer ${waiterToken}`);
+    expect(res.status).toBe(403);
   });
 });

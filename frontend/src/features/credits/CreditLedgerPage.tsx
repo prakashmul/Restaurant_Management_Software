@@ -6,10 +6,12 @@ import {
 } from 'lucide-react';
 import { posApi, type CreditCustomer } from '../../api/posApi';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { useAuth } from '../../auth/AuthContext';
 
 type PaymentMethod = 'cash' | 'card' | 'qr' | 'split';
 
 export const CreditLedgerPage = () => {
+  const { currentLocation } = useAuth();
   const [activeTab, setActiveTab] = useState<'active' | 'history' | 'settlements'>('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<CreditCustomer[]>([]);
@@ -45,7 +47,8 @@ export const CreditLedgerPage = () => {
 
   useEffect(() => {
     fetchCreditLedger();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocation?.id]);
 
   useRealtimeRefresh(['order'], fetchCreditLedger);
 
@@ -81,12 +84,16 @@ export const CreditLedgerPage = () => {
 
   // Delete Customer Credit Record
   const handleDeleteCustomerCredit = async (customer: CreditCustomer) => {
-    const firstConfirm = window.confirm(`Are you sure you want to delete the credit ledger entry for "${customer.name}"?`);
-    if (!firstConfirm) return;
+    const reason = window.prompt(`Why are you deleting the credit ledger entry for "${customer.name}"? (required)`);
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert('A reason is required to delete a credit entry.');
+      return;
+    }
 
     try {
       setLoading(true);
-      await Promise.all(customer.orderIds.map((id) => posApi.deleteOrder(id)));
+      await Promise.all(customer.orderIds.map((id) => posApi.deleteOrder(id, reason.trim())));
       alert(`Credit entry for ${customer.name} deleted successfully.`);
       if (isEditModalOpen) setIsEditModalOpen(false);
       if (isHistoryModalOpen) setIsHistoryModalOpen(false);

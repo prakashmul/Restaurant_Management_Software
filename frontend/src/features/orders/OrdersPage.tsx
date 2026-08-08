@@ -13,6 +13,7 @@ import {
   DollarSign,
   TrendingUp,
   CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
 import { posApi } from '../../api/posApi';
 import { useAuth } from '../../auth/AuthContext';
@@ -24,7 +25,8 @@ export const OrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const { isOwner, currentRestaurant, currentLocation } = useAuth();
+  const { isOwner, hasPermission, currentRestaurant, currentLocation } = useAuth();
+  const REFUNDABLE_STATUSES = ['paid', 'credit', 'unsettled', 'settled'];
 
   // Helper to convert any Date or ISO string into local YYYY-MM-DD
   const formatLocalYYYYMMDD = (dateInput?: string | Date) => {
@@ -66,7 +68,8 @@ export const OrdersPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocation?.id]);
 
   useRealtimeRefresh(['order'], fetchData);
 
@@ -214,13 +217,35 @@ export const OrdersPage: React.FC = () => {
   const handleDeleteOrder = async (orderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!orderId) return;
-    if (window.confirm('Are you sure you want to delete this order record?')) {
-      try {
-        await posApi.deleteOrder(orderId);
-        setOrders((prev) => prev.filter((o) => (o._id || o.id) !== orderId));
-      } catch (err) {
-        alert('Failed to delete order.');
-      }
+    const reason = window.prompt('Why are you deleting this order record? (required)');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert('A reason is required to delete an order.');
+      return;
+    }
+    try {
+      await posApi.deleteOrder(orderId, reason.trim());
+      setOrders((prev) => prev.filter((o) => (o._id || o.id) !== orderId));
+    } catch (err) {
+      alert('Failed to delete order.');
+    }
+  };
+
+  const handleRefundOrder = async (orderId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!orderId) return;
+    const reason = window.prompt('Why is this order being refunded? (required)');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert('A reason is required to refund an order.');
+      return;
+    }
+    if (!window.confirm('This restores the order\'s deducted stock and marks it refunded. Continue?')) return;
+    try {
+      const updated = await posApi.refundOrder(orderId, reason.trim());
+      setOrders((prev) => prev.map((o) => ((o._id || o.id) === orderId ? updated : o)));
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to refund order.');
     }
   };
 
@@ -485,7 +510,11 @@ export const OrdersPage: React.FC = () => {
                 badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
               } else if (statusStr === 'credit' || statusStr === 'unsettled') {
                 badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+              } else if (statusStr === 'refunded') {
+                badgeColor = 'bg-slate-700/40 text-slate-400 border-slate-600/40';
               }
+
+              const canRefund = hasPermission('orders.refund') && REFUNDABLE_STATUSES.includes(statusStr);
 
               return (
                 <div key={orderId} className="bg-slate-900 transition hover:bg-slate-800/30">
@@ -534,6 +563,15 @@ export const OrdersPage: React.FC = () => {
                         >
                           <Printer className="w-4 h-4" />
                         </button>
+                        {canRefund && (
+                          <button
+                            onClick={(e) => handleRefundOrder(orderId, e)}
+                            className="p-2 hover:bg-amber-500/10 rounded-lg text-slate-400 hover:text-amber-400 transition"
+                            title="Refund Order"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => handleDeleteOrder(orderId, e)}
                           className="p-2 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition"
@@ -548,6 +586,16 @@ export const OrdersPage: React.FC = () => {
                   {/* Expanded Order Content */}
                   {isExpanded && (
                     <div className="p-4 bg-slate-950/60 border-t border-slate-800/80 space-y-4">
+                      {ord.refundHistory && ord.refundHistory.length > 0 && (
+                        <div className="flex items-start gap-2 bg-slate-800/60 border border-slate-700 p-2.5 rounded-xl text-xs text-slate-300">
+                          <RotateCcw className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                          <span>
+                            <strong>Refunded:</strong> Rs.{ord.refundHistory[0].amount.toFixed(2)} —{' '}
+                            {ord.refundHistory[0].reason}
+                            {ord.refundHistory[0].refundedBy ? ` (by ${ord.refundHistory[0].refundedBy})` : ''}
+                          </span>
+                        </div>
+                      )}
                       {customerName && (
                         <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 p-2.5 rounded-xl text-xs text-indigo-300">
                           <User className="w-4 h-4 text-indigo-400" />

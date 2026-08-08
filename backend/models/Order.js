@@ -11,13 +11,32 @@ const orderItemSchema = new mongoose.Schema({
       inventoryItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory' },
       quantityPerPortion: { type: Number, required: true }
     }
-  ]
+  ],
+  // Kitchen Display System — whether this line has been prepared. Per-item
+  // (not per-order) so a ticket with multiple courses can show partial
+  // progress instead of only flipping when everything is done at once.
+  bumped: { type: Boolean, default: false },
+  // Split-by-seat billing — which diner this line belongs to. null means
+  // unassigned/shared (e.g. a starter for the table), which the per-seat
+  // breakdown in TableDetailModal.tsx groups separately from numbered seats.
+  seatNumber: { type: Number, default: null },
 });
 
 const paymentLogSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
   note: { type: String, default: '' },
   type: { type: String, enum: ['partial', 'full'], default: 'partial' },
+  createdAt: { type: Date, default: Date.now }
+});
+
+// No real payment gateway exists (see refundOrder in ordersController.js) —
+// this is an internal ledger reversal only, kept as its own history array
+// (rather than reusing paymentHistory) so a refund is never mistaken for a
+// payment when a receipt or ledger view iterates one or the other.
+const refundLogSchema = new mongoose.Schema({
+  amount: { type: Number, required: true },
+  reason: { type: String, required: true },
+  refundedBy: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -29,7 +48,7 @@ const orderSchema = new mongoose.Schema(
     items: [orderItemSchema],
     status: {
       type: String,
-      enum: ['pending', 'paid', 'credit', 'unsettled', 'settled', 'cancelled'],
+      enum: ['pending', 'paid', 'credit', 'unsettled', 'settled', 'cancelled', 'refunded'],
       default: 'pending'
     },
     paymentMethod: { type: String, default: 'cash' },
@@ -41,10 +60,29 @@ const orderSchema = new mongoose.Schema(
     customerName: { type: String, default: '' },
     customerPhone: { type: String, default: '' },
     subtotal: { type: Number, default: 0 },
+    // Applied to the subtotal before tax. type: null means no discount.
+    // amount is the actual Rs. deducted — a snapshot computed at apply time
+    // so a later change to costPerUnit-style inputs never retroactively
+    // changes what a past order's discount was worth.
+    discount: {
+      type: { type: String, enum: ['percent', 'flat'], default: null },
+      value: { type: Number, default: 0 },
+      reason: { type: String, default: '' },
+      amount: { type: Number, default: 0 },
+    },
+    // Added post-tax, not itself taxed — mirrors the discount subdocument's
+    // snapshot-at-apply-time convention.
+    tip: {
+      type: { type: String, enum: ['percent', 'flat'], default: null },
+      value: { type: Number, default: 0 },
+      amount: { type: Number, default: 0 },
+    },
     tax: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
     remainingBalance: { type: Number, default: 0 },
     paymentHistory: [paymentLogSchema],
+    refundHistory: [refundLogSchema],
+    refundedAt: { type: Date, default: null },
     notes: { type: String, default: '' },
     paidAt: { type: Date },
   },

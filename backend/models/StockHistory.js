@@ -9,6 +9,9 @@ const stockHistorySchema = new mongoose.Schema({
   unit: { type: String, default: 'units' },
   performedBy: { type: String, default: 'Anonymous' },
   description: { type: String, default: '' },
+  // Only set for deliberate waste log entries (see logWaste) — null for
+  // ordinary restocks, order-driven deductions, and transfers.
+  wasteReason: { type: String, enum: ['spoilage', 'breakage', 'staff-meal', 'other', null], default: null },
   createdAt: { type: Date, default: Date.now },
 });
 

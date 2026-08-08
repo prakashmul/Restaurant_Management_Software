@@ -70,7 +70,8 @@ function QuadrantChart({ dishes, medianUnitsSold, medianMargin }: { dishes: Cost
 }
 
 export const RecipeCostingPage: React.FC = () => {
-  const { isOwner } = useAuth();
+  const { hasPermission } = useAuth();
+  const canView = hasPermission('recipecosting.view');
   const [report, setReport] = useState<MenuEngineeringReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -90,19 +91,19 @@ export const RecipeCostingPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isOwner) loadReport();
+    if (canView) loadReport();
     else setLoading(false);
-  }, [isOwner]);
+  }, [canView]);
 
   const sortedDishes = useMemo(() => report?.dishes ?? [], [report]);
 
-  if (!isOwner) {
+  if (!canView) {
     return (
       <div className="p-6 min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">
         <div className="text-center max-w-sm">
           <ShieldAlert className="w-8 h-8 text-slate-600 mx-auto mb-3" />
-          <p className="text-sm font-semibold text-slate-300">Owner access only</p>
-          <p className="text-xs text-slate-500 mt-1">Recipe costing exposes ingredient pricing and margins, so only Owners can view this report.</p>
+          <p className="text-sm font-semibold text-slate-300">Access restricted</p>
+          <p className="text-xs text-slate-500 mt-1">Recipe costing exposes ingredient pricing and margins — ask an Owner to grant your role "View recipe costing & menu engineering" if you need this.</p>
         </div>
       </div>
     );

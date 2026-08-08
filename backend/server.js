@@ -7,6 +7,7 @@ import { initSocket } from './realtime/socket.js';
 import { migrateToMultiTenant } from './services/tenantMigrationService.js';
 import { migrateToLocations } from './services/locationMigrationService.js';
 import { migrateToLocationStock } from './services/inventoryStockMigrationService.js';
+import { migrateToRoles, syncBuiltInRolePermissions } from './services/roleMigrationService.js';
 import { migrateOrdersToCustomers } from './services/customerService.js';
 
 // --- REQUIRED ENVIRONMENT VARIABLES ---
@@ -38,6 +39,8 @@ mongoose
     await migrateToMultiTenant();
     await migrateToLocations();
     await migrateToLocationStock();
+    await migrateToRoles();
+    await syncBuiltInRolePermissions();
     await migrateOrdersToCustomers();
   })
   .catch((err) => logger.fatal({ err }, 'MongoDB connection error'));

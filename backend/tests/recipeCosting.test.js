@@ -130,9 +130,18 @@ describe('recipe costing', () => {
     expect(autoDeductionLeaked).toBe(false);
   });
 
-  it('rejects a non-Owner from the recipe costing report', async () => {
+  it('rejects a Waiter (no recipecosting.view by default) from the recipe costing report', async () => {
     const { token: waiterToken } = await createAuthedUser(app, { role: 'Waiter' });
     const res = await request(app).get('/api/recipe-costing').set('Authorization', `Bearer ${waiterToken}`);
     expect(res.status).toBe(403);
+  });
+
+  it('allows a Manager to view recipe costing', async () => {
+    const { token: managerToken, locationId } = await createAuthedUser(app, { role: 'Manager' });
+    const res = await request(app)
+      .get('/api/recipe-costing')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .set('X-Location-Id', locationId);
+    expect(res.status).toBe(200);
   });
 });

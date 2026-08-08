@@ -9,6 +9,12 @@ const restaurantSchema = new mongoose.Schema(
     logoUrl: { type: String, default: '' },
     currency: { type: String, default: 'Rs.' },
     taxRatePercent: { type: Number, default: 8 },
+    // Loyalty points are never stored as a running balance — they're
+    // recomputed from lifetime spend on every read (see customersController.js),
+    // so changing this rate only affects points earned going forward, never
+    // rewrites history. Default: 1 point per Rs. 100 spent, each point worth Rs. 1.
+    loyaltyEarnRatePerRs: { type: Number, default: 0.01, min: 0 },
+    loyaltyPointValueRs: { type: Number, default: 1, min: 0 },
     geofence: {
       latitude: { type: Number, default: null },
       longitude: { type: Number, default: null },

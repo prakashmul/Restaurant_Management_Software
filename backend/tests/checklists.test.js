@@ -8,11 +8,15 @@ let teardown;
 let ownerToken;
 let ownerLocationId;
 let asOwner;
+let roleIdByName;
 
 beforeAll(async () => {
   ({ app, teardown } = await setupTestApp());
   ({ token: ownerToken, locationId: ownerLocationId } = await createAuthedUser(app));
   asOwner = authedRequest(ownerToken, ownerLocationId);
+
+  const rolesRes = await asOwner(request(app).get('/api/roles'));
+  roleIdByName = new Map(rolesRes.body.map((r) => [r.name, r._id]));
 }, 60000);
 
 afterAll(async () => {
@@ -85,7 +89,7 @@ describe('checklists', () => {
       name: 'Test Waiter',
       email: 'checklist-waiter@example.com',
       password: 'testpassword123',
-      role: 'Waiter',
+      roleId: roleIdByName.get('Waiter'),
     });
     const loginRes = await request(app)
       .post('/api/auth/login')

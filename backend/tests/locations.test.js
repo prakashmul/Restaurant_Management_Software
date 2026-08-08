@@ -8,6 +8,7 @@ let teardown;
 let ownerToken;
 let mainLocationId;
 let asOwner;
+let roleIdByName;
 
 beforeAll(async () => {
   ({ app, teardown } = await setupTestApp());
@@ -15,6 +16,9 @@ beforeAll(async () => {
   ownerToken = token;
   mainLocationId = locationId;
   asOwner = authedRequest(token, locationId);
+
+  const rolesRes = await asOwner(request(app).get('/api/roles'));
+  roleIdByName = new Map(rolesRes.body.map((r) => [r.name, r._id]));
 }, 60000);
 
 afterAll(async () => {
@@ -101,7 +105,7 @@ describe('locations', () => {
       name: 'Confined Waiter',
       email: 'confined-waiter@example.com',
       password: 'testpassword123',
-      role: 'Waiter',
+      roleId: roleIdByName.get('Waiter'),
       locationId: mainLocationId,
     });
     expect(inviteRes.status).toBe(201);

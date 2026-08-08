@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Truck, Store, Plus, X, Trash2, ArrowRight } from 'lucide-react';
+import { Truck, Store, Plus, X, Trash2, ArrowRight, Sparkles, ScanLine } from 'lucide-react';
 import { posApi } from '../../api/posApi';
-import type { Vendor, PurchaseOrder, PurchaseOrderStatus } from '../../api/posApi';
+import type { Vendor, PurchaseOrder, PurchaseOrderStatus, SuggestedOrder } from '../../api/posApi';
 import type { InventoryItem } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { BarcodeScannerModal } from './BarcodeScannerModal';
 
 const STATUS_COLUMNS: { key: PurchaseOrderStatus; label: string }[] = [
   { key: 'draft', label: 'Draft' },
@@ -26,12 +27,14 @@ function extractErrorMessage(err: unknown, fallback: string): string {
 }
 
 export const ProcurementPage: React.FC = () => {
-  const { isOwner, currentUser } = useAuth();
+  const { isOwner, currentUser, currentLocation } = useAuth();
   const canManage = isOwner || currentUser?.role === 'Manager';
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestedOrder[]>([]);
+  const [draftingVendorId, setDraftingVendorId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
@@ -46,17 +49,21 @@ export const ProcurementPage: React.FC = () => {
   ]);
   const [poError, setPoError] = useState('');
   const [isSavingPo, setIsSavingPo] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scanNotice, setScanNotice] = useState('');
 
   const loadAll = async () => {
     try {
-      const [vendorData, poData, inventoryData] = await Promise.all([
+      const [vendorData, poData, inventoryData, suggestedData] = await Promise.all([
         posApi.getVendors(),
         posApi.getPurchaseOrders(),
         posApi.getInventory(),
+        posApi.getSuggestedOrders(),
       ]);
       setVendors(vendorData);
       setPurchaseOrders(poData);
       setInventory(inventoryData);
+      setSuggestions(suggestedData);
     } catch (err) {
       console.error('Failed to load procurement data:', err);
     } finally {
@@ -66,7 +73,8 @@ export const ProcurementPage: React.FC = () => {
 
   useEffect(() => {
     loadAll();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocation?.id]);
 
   useRealtimeRefresh(['purchaseOrder', 'inventory'], loadAll);
 
@@ -111,11 +119,37 @@ export const ProcurementPage: React.FC = () => {
     setPoVendorId(vendors[0]?._id || '');
     setPoLines([{ inventoryItemId: inventory[0]?._id || inventory[0]?.id || '', quantity: '', unitCost: '' }]);
     setPoError('');
+    setScanNotice('');
     setIsPoModalOpen(true);
   };
 
   const updateLine = (idx: number, field: 'inventoryItemId' | 'quantity' | 'unitCost', value: string) => {
     setPoLines((prev) => prev.map((line, i) => (i === idx ? { ...line, [field]: value } : line)));
+  };
+
+  const handleBarcodeDetected = (code: string) => {
+    setIsScannerOpen(false);
+    const item = inventory.find((i) => i.barcode && i.barcode === code);
+    if (!item) {
+      setScanNotice(`No ingredient is tagged with barcode "${code}" yet — add it from the Inventory page first.`);
+      return;
+    }
+    const itemId = item._id || item.id || '';
+    setScanNotice(`Scanned: ${item.name}`);
+    setPoLines((prev) => {
+      const existingIdx = prev.findIndex((l) => l.inventoryItemId === itemId);
+      if (existingIdx >= 0) {
+        return prev.map((line, i) =>
+          i === existingIdx ? { ...line, quantity: String((Number(line.quantity) || 0) + 1) } : line
+        );
+      }
+      const blankIdx = prev.findIndex((l) => !l.inventoryItemId);
+      const newLine = { inventoryItemId: itemId, quantity: '1', unitCost: String(item.costPerUnit || '') };
+      if (blankIdx >= 0) {
+        return prev.map((line, i) => (i === blankIdx ? newLine : line));
+      }
+      return [...prev, newLine];
+    });
   };
 
   const handleCreatePo = async (e: React.FormEvent) => {
@@ -163,6 +197,25 @@ export const ProcurementPage: React.FC = () => {
     }
   };
 
+  const handleDraftSuggestion = async (suggestion: SuggestedOrder) => {
+    try {
+      setDraftingVendorId(suggestion.vendorId);
+      await posApi.createPurchaseOrder({
+        vendorId: suggestion.vendorId,
+        items: suggestion.items.map((i) => ({
+          inventoryItemId: i.inventoryItemId,
+          quantity: i.reorderQuantity,
+          unitCost: i.unitCost,
+        })),
+      });
+      await loadAll();
+    } catch (err) {
+      alert(extractErrorMessage(err, 'Failed to draft purchase order.'));
+    } finally {
+      setDraftingVendorId(null);
+    }
+  };
+
   const handleDeletePo = async (po: PurchaseOrder) => {
     if (!window.confirm('Delete this draft purchase order?')) return;
     try {
@@ -207,6 +260,45 @@ export const ProcurementPage: React.FC = () => {
         <div className="p-8 text-center text-slate-400 text-sm">Loading procurement data…</div>
       ) : (
         <>
+          {suggestions.length > 0 && (
+            <div className="bg-amber-500/[0.04] border border-amber-500/20 rounded-2xl p-5">
+              <h3 className="text-xs font-bold mb-1 flex items-center gap-1.5 text-amber-300">
+                <Sparkles className="w-3.5 h-3.5" /> Suggested Purchase Orders
+              </h3>
+              <p className="text-[11px] text-slate-400 mb-4">
+                These ingredients are below their low-stock threshold and have a preferred vendor + reorder quantity set. One click drafts the PO — nothing is sent automatically.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {suggestions.map((s) => (
+                  <div key={s.vendorId} className="bg-slate-950 border border-slate-800 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-slate-200">{s.vendorName}</span>
+                      {canManage && (
+                        <button
+                          onClick={() => handleDraftSuggestion(s)}
+                          disabled={draftingVendorId === s.vendorId}
+                          className="text-[10px] font-bold text-amber-400 hover:text-amber-300 transition disabled:opacity-50 inline-flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" /> {draftingVendorId === s.vendorId ? 'Drafting…' : 'Draft PO'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {s.items.map((item) => (
+                        <div key={item.inventoryItemId} className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-300">{item.itemName}</span>
+                          <span className="text-slate-500 tabular-nums">
+                            {item.currentQuantity} {item.unit} on hand → order {item.reorderQuantity} {item.unit}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xs font-bold">Vendors</h3>
@@ -377,7 +469,17 @@ export const ProcurementPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Line Items</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-300">Line Items</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsScannerOpen(true)}
+                    className="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 transition inline-flex items-center gap-1"
+                  >
+                    <ScanLine className="w-3 h-3" /> Scan to add
+                  </button>
+                </div>
+                {scanNotice && <p className="text-[11px] text-emerald-400 mb-2">{scanNotice}</p>}
                 <div className="space-y-2">
                   {poLines.map((line, idx) => (
                     <div key={idx} className="grid grid-cols-[1fr_70px_80px_auto] gap-2 items-center">
@@ -443,6 +545,10 @@ export const ProcurementPage: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {isScannerOpen && (
+        <BarcodeScannerModal onDetect={handleBarcodeDetected} onClose={() => setIsScannerOpen(false)} />
       )}
     </div>
   );

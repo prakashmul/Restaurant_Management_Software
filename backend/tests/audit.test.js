@@ -6,11 +6,15 @@ import { createAuthedUser, authedRequest } from './helpers/auth.js';
 let app;
 let teardown;
 let asOwner;
+let roleIdByName;
 
 beforeAll(async () => {
   ({ app, teardown } = await setupTestApp());
   const { token, locationId } = await createAuthedUser(app);
   asOwner = authedRequest(token, locationId);
+
+  const rolesRes = await asOwner(request(app).get('/api/roles'));
+  roleIdByName = new Map(rolesRes.body.map((r) => [r.name, r._id]));
 }, 60000);
 
 afterAll(async () => {
@@ -34,13 +38,13 @@ describe('audit log', () => {
       name: 'Audit Waiter',
       email: 'audit-waiter@example.com',
       password: 'testpassword123',
-      role: 'Waiter',
+      roleId: roleIdByName.get('Waiter'),
     });
     expect(await latestAuditAction()).toMatch(/invited Audit Waiter as Waiter/);
 
     const roleRes = await asOwner(
       request(app).patch(`/api/staff/${inviteRes.body.id}/role`)
-    ).send({ role: 'Manager' });
+    ).send({ roleId: roleIdByName.get('Manager') });
     expect(roleRes.status).toBe(200);
     expect(await latestAuditAction()).toMatch(/changed Audit Waiter's role from Waiter to Manager/);
 
@@ -159,5 +163,38 @@ describe('audit log', () => {
 
     const ownRes = await asOwner(request(app).get('/api/audit-log'));
     expect(ownRes.body.length).toBeGreaterThan(0);
+  });
+
+  it('filters by a text search on the action description', async () => {
+    const res = await asOwner(request(app).get('/api/audit-log?q=Audit Vendor'));
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body.every((e) => e.action.includes('Audit Vendor'))).toBe(true);
+  });
+
+  it('treats regex special characters in the search term as literal text', async () => {
+    const res = await asOwner(request(app).get('/api/audit-log?q=Rs. 50 ('));
+    expect(res.status).toBe(200); // would 500 if the raw string were passed straight into $regex
+  });
+
+  it('filters by actor email', async () => {
+    const staffRes = await asOwner(request(app).get('/api/staff'));
+    const ownerEmail = staffRes.body.find((s) => s.role === 'Owner').email;
+
+    const res = await asOwner(request(app).get(`/api/audit-log?actorEmail=${encodeURIComponent(ownerEmail)}`));
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body.every((e) => e.actorEmail === ownerEmail)).toBe(true);
+  });
+
+  it('filters by a date range, excluding entries outside it', async () => {
+    const farFuture = '2099-01-01';
+    const res = await asOwner(request(app).get(`/api/audit-log?startDate=${farFuture}&endDate=${farFuture}`));
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(0);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const todayRes = await asOwner(request(app).get(`/api/audit-log?startDate=${today}&endDate=${today}`));
+    expect(todayRes.body.length).toBeGreaterThan(0);
   });
 });

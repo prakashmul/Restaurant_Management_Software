@@ -105,6 +105,31 @@ describe('procurement', () => {
     expect(entry.quantity).toBe(5);
   });
 
+  it('surfaces the received purchase order in the ingredient\'s supplier price history', async () => {
+    const res = await asOwner(request(app).get(`/api/inventory/${inventoryItemId}/price-history`));
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(1);
+    expect(res.body[0].vendorName).toBe('Himalayan Butchery');
+    expect(res.body[0].unitCost).toBe(10);
+    expect(res.body[0].quantity).toBe(5);
+    expect(res.body[0].receivedAt).toBeTruthy();
+  });
+
+  it('does not include a still-draft purchase order in supplier price history', async () => {
+    // Created and torn back down within this test so it doesn't shift which
+    // PO later tests in this file find at listRes.body[0] (sorted newest-first).
+    const draftRes = await asOwner(request(app).post('/api/procurement/purchase-orders')).send({
+      vendorId,
+      items: [{ inventoryItemId, quantity: 99, unitCost: 999 }],
+    });
+
+    const res = await asOwner(request(app).get(`/api/inventory/${inventoryItemId}/price-history`));
+    expect(res.body.length).toBe(1); // still just the one already-received PO
+    expect(res.body.every((entry) => entry.unitCost !== 999)).toBe(true);
+
+    await asOwner(request(app).delete(`/api/procurement/purchase-orders/${draftRes.body._id}`));
+  });
+
   it('rejects deleting a purchase order that is no longer in draft status', async () => {
     const listRes = await asOwner(request(app).get('/api/procurement/purchase-orders'));
     const po = listRes.body[0];
@@ -149,5 +174,64 @@ describe('procurement', () => {
       request(app).delete(`/api/procurement/vendors/${otherVendorRes.body._id}`)
     );
     expect(deleteVendorRes.status).toBe(200);
+  });
+});
+
+describe('suggested purchase orders', () => {
+  it('suggests a draft PO for a low-stock item with a preferred vendor and reorder quantity configured', async () => {
+    const createRes = await asOwner(request(app).post('/api/inventory')).send({
+      name: 'Suggestion Test Ingredient',
+      totalQuantity: 2,
+      unit: 'kg',
+      costPerUnit: 3,
+      lowStockThreshold: 10,
+    });
+    const itemId = createRes.body._id;
+
+    await asOwner(request(app).patch(`/api/inventory/${itemId}`)).send({
+      preferredVendorId: vendorId,
+      reorderQuantity: 20,
+    });
+
+    const res = await asOwner(request(app).get('/api/procurement/suggested-orders'));
+    expect(res.status).toBe(200);
+    const suggestion = res.body.find((s) => s.vendorId === vendorId);
+    expect(suggestion).toBeTruthy();
+    const line = suggestion.items.find((i) => i.inventoryItemId === itemId);
+    expect(line).toBeTruthy();
+    expect(line.reorderQuantity).toBe(20);
+    expect(line.currentQuantity).toBe(2);
+  });
+
+  it('excludes a low-stock item with no preferred vendor configured', async () => {
+    const createRes = await asOwner(request(app).post('/api/inventory')).send({
+      name: 'No Vendor Ingredient',
+      totalQuantity: 1,
+      unit: 'kg',
+      costPerUnit: 1,
+      lowStockThreshold: 5,
+    });
+
+    const res = await asOwner(request(app).get('/api/procurement/suggested-orders'));
+    const found = res.body.some((s) => s.items.some((i) => i.inventoryItemId === createRes.body._id));
+    expect(found).toBe(false);
+  });
+
+  it('excludes an item that is not actually low on stock', async () => {
+    const createRes = await asOwner(request(app).post('/api/inventory')).send({
+      name: 'Well Stocked Ingredient',
+      totalQuantity: 100,
+      unit: 'kg',
+      costPerUnit: 1,
+      lowStockThreshold: 5,
+    });
+    await asOwner(request(app).patch(`/api/inventory/${createRes.body._id}`)).send({
+      preferredVendorId: vendorId,
+      reorderQuantity: 20,
+    });
+
+    const res = await asOwner(request(app).get('/api/procurement/suggested-orders'));
+    const found = res.body.some((s) => s.items.some((i) => i.inventoryItemId === createRes.body._id));
+    expect(found).toBe(false);
   });
 });

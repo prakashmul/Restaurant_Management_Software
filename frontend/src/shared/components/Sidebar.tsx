@@ -3,18 +3,22 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutGrid,
   Utensils,
+  Flame,
   Package,
   ShoppingBag,
   CreditCard,
   Users,
   ChefHat,
   ClipboardCheck,
+  CalendarClock,
   CalendarDays,
   Truck,
   History,
   Building2,
   MapPin,
   ArrowLeftRight,
+  Users2,
+  Settings,
   User,
   ChevronUp,
   LogIn,
@@ -42,18 +46,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
     { path: '/pos', label: 'POS System', icon: Utensils, end: false },
+    { path: '/kitchen', label: 'Kitchen Display', icon: Flame, end: false },
     { path: '/inventory', label: 'Inventory', icon: Package, end: false },
     { path: '/orders', label: 'Order History', icon: ShoppingBag, end: false },
     { path: '/credits', label: 'Credit Ledger', icon: CreditCard, end: false },
+    { path: '/customers', label: 'Customers', icon: Users2, end: false },
+    { path: '/reservations', label: 'Reservations', icon: CalendarClock, end: false },
     { path: '/head-office', label: 'Head Office', icon: Building2, end: false },
     { path: '/recipe-costing', label: 'Recipe Costing', icon: ChefHat, end: false },
     { path: '/checklists', label: 'Checklists', icon: ClipboardCheck, end: false },
     { path: '/scheduling', label: 'Staff Schedule', icon: CalendarDays, end: false },
     { path: '/procurement', label: 'Procurement', icon: Truck, end: false },
     { path: '/transfers', label: 'Transfers', icon: ArrowLeftRight, end: false },
-    { path: '/staff', label: 'Staff & Roles', icon: Users, end: false },
+    { path: '/staff', label: 'Users & Roles', icon: Users, end: false },
     { path: '/locations', label: 'Locations', icon: MapPin, end: false },
     { path: '/audit-log', label: 'Audit Log', icon: History, end: false },
+    { path: '/settings', label: 'Settings', icon: Settings, end: false },
   ] as const;
 
   // Close popup menu when clicking outside
@@ -68,10 +76,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, []);
 
   return (
-    <aside className="w-64 bg-slate-900 border-r border-slate-800 p-4 flex flex-col justify-between h-full select-none">
-      {/* TOP SECTION: BRAND & NAV */}
-      <div className="space-y-6">
-        <div className="flex items-center gap-3 px-2">
+    <aside className="w-64 bg-slate-900 border-r border-slate-800 p-4 flex flex-col h-full select-none">
+      {/* TOP SECTION: BRAND & NAV — scrolls independently so a long nav list never pushes the profile button off-screen */}
+      <div className="flex-1 min-h-0 flex flex-col space-y-6 overflow-y-auto">
+        <div className="flex items-center gap-3 px-2 shrink-0">
           <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center font-bold text-white text-xs">
             RMS
           </div>
@@ -81,7 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        <nav className="space-y-1">
+        <nav className="space-y-1 pb-1">
           {navItems.map((item) => {
             const Icon = item.icon;
 
@@ -106,8 +114,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* BOTTOM SECTION: PROFILE BUTTON & POPUP MENU */}
-      <div className="relative pt-4 border-t border-slate-800" ref={menuRef}>
+      {/* BOTTOM SECTION: PROFILE BUTTON & POPUP MENU — always visible, never scrolls away */}
+      <div className="relative pt-4 border-t border-slate-800 shrink-0" ref={menuRef}>
         {/* POPUP MENU */}
         {isProfileOpen && (
           <div className="absolute bottom-full left-0 right-0 mb-2 bg-slate-950 border border-slate-800 rounded-xl p-1.5 shadow-xl backdrop-blur-lg z-50">

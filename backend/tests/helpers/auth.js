@@ -1,6 +1,7 @@
 import request from 'supertest';
 import User from '../../models/User.js';
 import StaffMembership from '../../models/StaffMembership.js';
+import Role from '../../models/Role.js';
 
 let counter = 0;
 
@@ -27,9 +28,14 @@ export async function createAuthedUser(app, overrides = {}) {
   const user = await User.findOne({ email: email.toLowerCase().trim() });
 
   if (overrides.role && overrides.role !== 'Owner') {
+    // register() seeds the 5 default roles for every new restaurant — reuse
+    // the matching one so the downgraded account's roleId (the thing
+    // requirePermission actually checks) stays consistent with its role
+    // display name, exactly like a real role reassignment would.
+    const role = await Role.findOne({ restaurantId, name: overrides.role });
     await StaffMembership.updateOne(
       { userId: user._id, restaurantId },
-      { role: overrides.role, locationId: overrides.locationId || null }
+      { role: overrides.role, roleId: role._id, locationId: overrides.locationId || null }
     );
   }
 

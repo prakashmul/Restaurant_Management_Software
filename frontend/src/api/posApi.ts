@@ -438,7 +438,14 @@ export const posApi = {
 
   saveOrder: (
     tableId: any,
-    items: { menuItemId: any; name: string; price: number; quantity: number }[]
+    items: {
+      menuItemId: any;
+      name: string;
+      price: number;
+      quantity: number;
+      seatNumber?: number | null;
+      bumped?: boolean;
+    }[]
   ) => {
     // Sanitize table ID and item array before sending to Express/MongoDB
     const safeTableId = cleanId(tableId);
@@ -447,6 +454,8 @@ export const posApi = {
       name: item.name,
       price: Number(item.price) || 0,
       quantity: Number(item.quantity) || 1,
+      seatNumber: item.seatNumber ?? null,
+      bumped: Boolean(item.bumped),
     }));
 
     return API.post<Order>('/orders/save', {

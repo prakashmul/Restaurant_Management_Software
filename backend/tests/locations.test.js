@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { setupTestApp } from './helpers/testApp.js';
-import { createAuthedUser, authedRequest } from './helpers/auth.js';
+import { createAuthedUser, authedRequest, inviteAndLoginStaff } from './helpers/auth.js';
 
 let app;
 let teardown;
@@ -101,25 +101,20 @@ describe('locations', () => {
   });
 
   it('confines a location-restricted staff member to their assigned location regardless of the X-Location-Id header', async () => {
-    const inviteRes = await asOwner(request(app).post('/api/staff/invite')).send({
+    const { token: waiterToken, inviteRes } = await inviteAndLoginStaff(app, asOwner, {
       name: 'Confined Waiter',
       email: 'confined-waiter@example.com',
-      password: 'testpassword123',
       roleId: roleIdByName.get('Waiter'),
       locationId: mainLocationId,
     });
     expect(inviteRes.status).toBe(201);
     expect(inviteRes.body.locationId).toBe(mainLocationId);
 
-    const loginRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: 'confined-waiter@example.com', password: 'testpassword123' });
-
     // Attempt to spoof a different location via the header — server must
     // ignore it and use the staff member's assigned location instead.
     const spoofedRes = await request(app)
       .get('/api/tables')
-      .set('Authorization', `Bearer ${loginRes.body.token}`)
+      .set('Authorization', `Bearer ${waiterToken}`)
       .set('X-Location-Id', secondLocationId);
 
     const mainOnlyRes = await asOwner(request(app).get('/api/tables'));

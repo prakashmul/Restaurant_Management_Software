@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { generate as generateTotp } from 'otplib';
 import { setupTestApp } from './helpers/testApp.js';
+import User from '../models/User.js';
+import { hashResetToken } from '../utils/resetToken.js';
 
 let app;
 let teardown;
@@ -109,6 +111,83 @@ describe('auth', () => {
     });
     expect(res.body.user.password).toBeUndefined();
     expect(JSON.stringify(res.body)).not.toContain('testpassword123');
+  });
+});
+
+describe('forgot / reset password', () => {
+  const email = 'forgot-user@example.com';
+  const originalPassword = 'testpassword123';
+
+  beforeAll(async () => {
+    await request(app).post('/api/auth/register').send({
+      name: 'Forgot User',
+      email,
+      password: originalPassword,
+      restaurantName: 'Forgot Diner',
+    });
+  });
+
+  it('issues a reset token on request and returns the same generic message either way', async () => {
+    const realRes = await request(app).post('/api/auth/forgot-password').send({ email });
+    const fakeRes = await request(app)
+      .post('/api/auth/forgot-password')
+      .send({ email: 'no-such-account@example.com' });
+
+    expect(realRes.status).toBe(200);
+    expect(fakeRes.status).toBe(200);
+    expect(realRes.body.message).toBe(fakeRes.body.message);
+
+    const user = await User.findOne({ email }).select('+passwordResetTokenHash +passwordResetExpires');
+    expect(user.passwordResetTokenHash).toBeTruthy();
+    expect(user.passwordResetExpires.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('rejects an invalid or garbage token', async () => {
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: 'not-a-real-token', password: 'somenewpassword1' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects an expired token', async () => {
+    const rawToken = 'expired-token-xyz';
+    await User.findOneAndUpdate(
+      { email },
+      { passwordResetTokenHash: hashResetToken(rawToken), passwordResetExpires: new Date(Date.now() - 1000) }
+    );
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: rawToken, password: 'somenewpassword1' });
+    expect(res.status).toBe(400);
+  });
+
+  it('resets the password with a valid token, and the old password stops working', async () => {
+    const rawToken = 'valid-token-xyz';
+    await User.findOneAndUpdate(
+      { email },
+      { passwordResetTokenHash: hashResetToken(rawToken), passwordResetExpires: new Date(Date.now() + 60000) }
+    );
+
+    const resetRes = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: rawToken, password: 'brandnewpassword1' });
+    expect(resetRes.status).toBe(200);
+
+    const oldLoginRes = await request(app).post('/api/auth/login').send({ email, password: originalPassword });
+    expect(oldLoginRes.status).toBe(400);
+
+    const newLoginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'brandnewpassword1' });
+    expect(newLoginRes.status).toBe(200);
+    expect(newLoginRes.body.token).toBeTruthy();
+
+    // The token is single-use — a second attempt with the same raw token
+    // must fail now that it's been cleared on successful reset.
+    const reuseRes = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: rawToken, password: 'anotherpassword1' });
+    expect(reuseRes.status).toBe(400);
   });
 });
 

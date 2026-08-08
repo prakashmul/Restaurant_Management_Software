@@ -7,6 +7,8 @@ import Restaurant from '../models/Restaurant.js';
 import StaffMembership from '../models/StaffMembership.js';
 import Location from '../models/Location.js';
 import { seedNewRestaurant, seedDefaultRoles } from '../services/seedService.js';
+import { issuePasswordSetupEmail } from '../services/passwordSetupService.js';
+import { hashResetToken } from '../utils/resetToken.js';
 
 function signToken(user, membership) {
   return jwt.sign(
@@ -261,5 +263,52 @@ export async function disableTotp(req, res) {
   } catch (err) {
     req.log.error({ err }, 'Error disabling TOTP');
     res.status(500).json({ message: 'Failed to disable two-factor authentication.' });
+  }
+}
+
+// Always the same response whether or not the email exists — otherwise this
+// endpoint becomes a way to check which emails are registered.
+export async function forgotPassword(req, res) {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (user) {
+      const membership = await StaffMembership.findOne({ userId: user._id });
+      const restaurant = membership ? await Restaurant.findById(membership.restaurantId) : null;
+      await issuePasswordSetupEmail({
+        user,
+        restaurantName: restaurant?.name || 'Restaurant Management Software',
+        mode: 'reset',
+      });
+    }
+    res.status(200).json({ message: 'If an account exists for that email, a reset link has been sent.' });
+  } catch (err) {
+    req.log.error({ err }, 'Error requesting password reset');
+    res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+}
+
+export async function resetPassword(req, res) {
+  const { token, password } = req.body;
+  try {
+    const tokenHash = hashResetToken(token);
+    const user = await User.findOne({
+      passwordResetTokenHash: tokenHash,
+      passwordResetExpires: { $gt: new Date() },
+    }).select('+passwordResetTokenHash +passwordResetExpires');
+
+    if (!user) {
+      return res.status(400).json({ message: 'This reset link is invalid or has expired.' });
+    }
+
+    user.password = password;
+    user.passwordResetTokenHash = null;
+    user.passwordResetExpires = null;
+    await user.save();
+
+    res.status(200).json({ message: 'Password updated. You can now log in.' });
+  } catch (err) {
+    req.log.error({ err }, 'Error resetting password');
+    res.status(500).json({ message: 'Server error. Please try again.' });
   }
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { setupTestApp } from './helpers/testApp.js';
-import { createAuthedUser, authedRequest } from './helpers/auth.js';
+import { createAuthedUser, authedRequest, inviteAndLoginStaff } from './helpers/auth.js';
 
 let app;
 let teardown;
@@ -85,16 +85,12 @@ describe('checklists', () => {
     // Must be a staff member of the SAME restaurant as ownerToken —
     // createAuthedUser spins up a brand-new tenant, which (correctly) can't
     // see this restaurant's checklist templates at all.
-    await asOwner(request(app).post('/api/staff/invite')).send({
+    const { token: waiterToken } = await inviteAndLoginStaff(app, asOwner, {
       name: 'Test Waiter',
       email: 'checklist-waiter@example.com',
-      password: 'testpassword123',
       roleId: roleIdByName.get('Waiter'),
     });
-    const loginRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: 'checklist-waiter@example.com', password: 'testpassword123' });
-    const asWaiter = authedRequest(loginRes.body.token, ownerLocationId);
+    const asWaiter = authedRequest(waiterToken, ownerLocationId);
 
     const todayRes = await asWaiter(request(app).get('/api/checklists/today'));
     const completionId = todayRes.body[0].completionId;

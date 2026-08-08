@@ -11,6 +11,10 @@ const locationSchema = new mongoose.Schema(
     address: { type: String, default: '' },
     phone: { type: String, default: '' },
     isActive: { type: Boolean, default: true },
+    // Cooldown marker for low-stock alert emails — checked every few hours,
+    // but only actually sends once per day per location so a persistently
+    // low item doesn't spam Owner/Manager on every check.
+    lastLowStockAlertAt: { type: Date, default: null },
     geofence: {
       latitude: { type: Number, default: null },
       longitude: { type: Number, default: null },

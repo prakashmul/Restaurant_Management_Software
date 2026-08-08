@@ -37,7 +37,6 @@ describe('audit log', () => {
     const inviteRes = await asOwner(request(app).post('/api/staff/invite')).send({
       name: 'Audit Waiter',
       email: 'audit-waiter@example.com',
-      password: 'testpassword123',
       roleId: roleIdByName.get('Waiter'),
     });
     expect(await latestAuditAction()).toMatch(/invited Audit Waiter as Waiter/);

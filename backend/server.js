@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import http from 'node:http';
 import mongoose from 'mongoose';
+import cron from 'node-cron';
 import { createApp } from './app.js';
 import { logger } from './middleware/logger.js';
 import { initSocket } from './realtime/socket.js';
@@ -9,6 +10,8 @@ import { migrateToLocations } from './services/locationMigrationService.js';
 import { migrateToLocationStock } from './services/inventoryStockMigrationService.js';
 import { migrateToRoles, syncBuiltInRolePermissions } from './services/roleMigrationService.js';
 import { migrateOrdersToCustomers } from './services/customerService.js';
+import { checkLowStockAndAlert } from './services/lowStockAlertService.js';
+import { sendDailySummaries } from './services/summaryReportService.js';
 
 // --- REQUIRED ENVIRONMENT VARIABLES ---
 // Accepts either name — the Atlas-generated .env uses MONGODB_URI.
@@ -42,6 +45,17 @@ mongoose
     await migrateToRoles();
     await syncBuiltInRolePermissions();
     await migrateOrdersToCustomers();
+
+    // Low stock: checked every 6 hours, but lowStockAlertService itself only
+    // actually emails once a day per location — see its cooldown logic.
+    cron.schedule('0 */6 * * *', () => {
+      checkLowStockAndAlert().catch((err) => logger.error({ err }, 'Low-stock alert job failed'));
+    });
+
+    // Daily summary: once a day, late enough that the day's orders are done.
+    cron.schedule('30 23 * * *', () => {
+      sendDailySummaries().catch((err) => logger.error({ err }, 'Daily summary job failed'));
+    });
   })
   .catch((err) => logger.fatal({ err }, 'MongoDB connection error'));
 

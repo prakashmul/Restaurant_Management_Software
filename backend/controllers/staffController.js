@@ -1,11 +1,14 @@
+import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
+import Restaurant from '../models/Restaurant.js';
 import StaffMembership from '../models/StaffMembership.js';
 import Location from '../models/Location.js';
 import Role from '../models/Role.js';
 import Attendance from '../models/Attendance.js';
 import { logAudit } from '../services/auditService.js';
 import { toCsv } from '../utils/csv.js';
+import { issuePasswordSetupEmail } from '../services/passwordSetupService.js';
 
 function toStaffDTO(membership) {
   return {
@@ -45,11 +48,14 @@ export async function listStaff(req, res) {
 }
 
 // Adds a staff member to this restaurant. If the email already belongs to a
-// User elsewhere, that identity is reused (its existing password stands —
-// the submitted password is ignored) and a new membership links it to this
-// restaurant; otherwise a brand-new User is created for them.
+// User elsewhere, that identity is reused (they already have a working
+// password, so nothing else happens) and a new membership links it to this
+// restaurant; otherwise a brand-new User is created with a random password
+// nobody — including the inviter — ever sees, and the new hire gets an email
+// with a link to set their own. If that email fails to send, the account
+// still exists; "Forgot password" on the login screen serves as the resend.
 export async function inviteStaff(req, res) {
-  const { name, email, password, roleId, locationId } = req.body;
+  const { name, email, roleId, locationId } = req.body;
   const { restaurantId } = req;
 
   const session = await mongoose.startSession();
@@ -66,10 +72,13 @@ export async function inviteStaff(req, res) {
     }
 
     let membership;
+    let isNewUser = false;
     await session.withTransaction(async () => {
       let user = await User.findOne({ email: email.toLowerCase().trim() }).session(session);
       if (!user) {
-        user = (await User.create([{ name, email, password }], { session }))[0];
+        const placeholderPassword = crypto.randomBytes(24).toString('hex');
+        user = (await User.create([{ name, email, password: placeholderPassword }], { session }))[0];
+        isNewUser = true;
       }
 
       const existingMembership = await StaffMembership.findOne({
@@ -100,8 +109,20 @@ export async function inviteStaff(req, res) {
       membership = await membership.populate('userId', 'name email');
     });
 
+    let emailSent = true;
+    if (isNewUser) {
+      const restaurant = await Restaurant.findById(restaurantId).select('name');
+      const user = await User.findById(membership.userId._id);
+      const result = await issuePasswordSetupEmail({
+        user,
+        restaurantName: restaurant?.name || 'Restaurant Management Software',
+        mode: 'invite',
+      });
+      emailSent = result.sent;
+    }
+
     await logAudit(restaurantId, req.user, `invited ${membership.userId.name} as ${role.name}`, locationId || null);
-    res.status(201).json(toStaffDTO(membership));
+    res.status(201).json({ ...toStaffDTO(membership), emailSent });
   } catch (err) {
     const status = err.status || 500;
     if (status >= 500) req.log.error({ err }, 'Error inviting staff member');

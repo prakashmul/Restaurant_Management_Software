@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { setupTestApp } from './helpers/testApp.js';
 import { createAuthedUser, authedRequest } from './helpers/auth.js';
+import User from '../models/User.js';
+import { hashResetToken } from '../utils/resetToken.js';
 
 let app;
 let teardown;
@@ -34,22 +36,38 @@ describe('staff management', () => {
     expect(res.body[0].userId).toBe(ownerUserId);
   });
 
-  it('lets the Owner invite a new staff member', async () => {
+  it('lets the Owner invite a new staff member without ever setting a password', async () => {
     const res = await asOwner(request(app).post('/api/staff/invite')).send({
       name: 'New Waiter',
       email: 'waiter-invite@example.com',
-      password: 'testpassword123',
       roleId: roleIdByName.get('Waiter'),
     });
     expect(res.status).toBe(201);
     expect(res.body.role).toBe('Waiter');
     expect(res.body.email).toBe('waiter-invite@example.com');
+    expect(res.body.emailSent).toBe(true);
   });
 
-  it('lets an invited staff member log in and receive a token scoped to that role and restaurant', async () => {
+  it('lets an invited staff member set their password via the emailed reset link, then log in scoped to that role and restaurant', async () => {
+    const invited = await User.findOne({ email: 'waiter-invite@example.com' }).select('+passwordResetTokenHash +passwordResetExpires');
+    expect(invited.passwordResetTokenHash).toBeTruthy();
+    expect(invited.passwordResetExpires.getTime()).toBeGreaterThan(Date.now());
+
+    // The invite email only ever contains the raw token — the DB only ever
+    // stores its hash — so a test has to mint its own raw token and write
+    // the matching hash directly, exactly like the real link would produce.
+    const rawToken = 'test-invite-token-abc123';
+    invited.passwordResetTokenHash = hashResetToken(rawToken);
+    await invited.save();
+
+    const setPasswordRes = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: rawToken, password: 'newpassword123' });
+    expect(setPasswordRes.status).toBe(200);
+
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ email: 'waiter-invite@example.com', password: 'testpassword123' });
+      .send({ email: 'waiter-invite@example.com', password: 'newpassword123' });
     expect(loginRes.status).toBe(200);
     expect(loginRes.body.user.role).toBe('Waiter');
 
@@ -66,7 +84,7 @@ describe('staff management', () => {
     const res = await request(app)
       .post('/api/staff/invite')
       .set('Authorization', `Bearer ${waiterToken}`)
-      .send({ name: 'X', email: 'nope@example.com', password: 'testpassword123', roleId: roleIdByName.get('Manager') });
+      .send({ name: 'X', email: 'nope@example.com', roleId: roleIdByName.get('Manager') });
     expect(res.status).toBe(403);
   });
 
@@ -74,7 +92,6 @@ describe('staff management', () => {
     const res = await asOwner(request(app).post('/api/staff/invite')).send({
       name: 'New Waiter',
       email: 'waiter-invite@example.com',
-      password: 'testpassword123',
       roleId: roleIdByName.get('Cashier'),
     });
     expect(res.status).toBe(400);

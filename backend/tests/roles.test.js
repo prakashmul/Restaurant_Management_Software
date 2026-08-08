@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { setupTestApp } from './helpers/testApp.js';
-import { createAuthedUser, authedRequest } from './helpers/auth.js';
+import { createAuthedUser, authedRequest, inviteAndLoginStaff } from './helpers/auth.js';
 
 let app;
 let teardown;
@@ -94,17 +94,12 @@ describe('roles', () => {
   let shiftLeadUserToken;
 
   it('assigns a staff member to the custom role and enforces exactly its permission set', async () => {
-    await asOwner(request(app).post('/api/staff/invite')).send({
+    const { token } = await inviteAndLoginStaff(app, asOwner, {
       name: 'Shift Lead Person',
       email: 'shiftlead@example.com',
-      password: 'testpassword123',
       roleId: shiftLeadId,
     });
-
-    const loginRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: 'shiftlead@example.com', password: 'testpassword123' });
-    shiftLeadUserToken = loginRes.body.token;
+    shiftLeadUserToken = token;
     const asShiftLead = authedRequest(shiftLeadUserToken, ownerLocationId);
 
     // Has tables (granted).

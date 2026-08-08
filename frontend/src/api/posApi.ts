@@ -339,6 +339,10 @@ export interface StaffMember {
   status: 'active' | 'invited';
   hourlyRate: number;
   joinedAt: string;
+  // Only present on the response to inviteStaff — whether the "set your
+  // password" email actually went out (false means "Forgot password" is the
+  // fallback, since the account still works even if this one email failed).
+  emailSent?: boolean;
 }
 
 export interface Permission {
@@ -569,7 +573,7 @@ export const posApi = {
   // Staff & Roles
   getStaff: () => API.get<StaffMember[]>('/staff').then((r) => r.data),
 
-  inviteStaff: (data: { name: string; email: string; password: string; roleId: string; locationId?: string | null }) =>
+  inviteStaff: (data: { name: string; email: string; roleId: string; locationId?: string | null }) =>
     API.post<StaffMember>('/staff/invite', data).then((r) => r.data),
 
   updateStaffRole: (staffId: string, roleId: string) =>
@@ -740,6 +744,12 @@ export const posApi = {
 
   disableTotp: (token: string) =>
     API.post<{ totpEnabled: boolean }>('/auth/2fa/disable', { token }).then((r) => r.data),
+
+  forgotPassword: (email: string) =>
+    API.post<{ message: string }>('/auth/forgot-password', { email }).then((r) => r.data),
+
+  resetPassword: (token: string, password: string) =>
+    API.post<{ message: string }>('/auth/reset-password', { token, password }).then((r) => r.data),
 };
 
 interface AuthRestaurantShape {

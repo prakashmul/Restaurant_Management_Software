@@ -16,6 +16,11 @@ const userSchema = new mongoose.Schema({
   // so a setup that's started and abandoned never actually gates login.
   totpSecret: { type: String, default: null, select: false },
   totpEnabled: { type: Boolean, default: false },
+  // Shared by forgot-password and staff-invite ("set your password" is just
+  // a reset token for an account with a password nobody knows yet). Only
+  // the SHA-256 hash is stored, never the raw token that goes in the email.
+  passwordResetTokenHash: { type: String, default: null, select: false },
+  passwordResetExpires: { type: Date, default: null, select: false },
 });
 
 userSchema.pre('save', async function hashPassword() {

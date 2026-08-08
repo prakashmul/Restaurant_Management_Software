@@ -6,7 +6,7 @@ import {
   Trash2,
   X,
   Mail,
-  Lock,
+  AlertTriangle,
   User as UserIcon,
   Plus,
   Crown,
@@ -60,10 +60,10 @@ export const StaffPage: React.FC = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
-  const [invitePassword, setInvitePassword] = useState('');
   const [inviteRoleId, setInviteRoleId] = useState('');
   const [inviteLocationId, setInviteLocationId] = useState('');
   const [inviteError, setInviteError] = useState('');
+  const [inviteEmailWarning, setInviteEmailWarning] = useState('');
   const [isInviting, setIsInviting] = useState(false);
 
   const [savingRateId, setSavingRateId] = useState<string | null>(null);
@@ -188,31 +188,35 @@ export const StaffPage: React.FC = () => {
   const resetInviteForm = () => {
     setInviteName('');
     setInviteEmail('');
-    setInvitePassword('');
     setInviteRoleId(roles.find((r) => !r.isOwnerRole)?._id || '');
     setInviteLocationId('');
     setInviteError('');
+    setInviteEmailWarning('');
   };
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     setInviteError('');
-    if (!inviteName.trim() || !inviteEmail.trim() || !invitePassword.trim() || !inviteRoleId) {
+    if (!inviteName.trim() || !inviteEmail.trim() || !inviteRoleId) {
       setInviteError('Please fill in all fields.');
       return;
     }
     try {
       setIsInviting(true);
-      await posApi.inviteStaff({
+      const result = await posApi.inviteStaff({
         name: inviteName.trim(),
         email: inviteEmail.trim(),
-        password: invitePassword,
         roleId: inviteRoleId,
         locationId: inviteLocationId || null,
       });
       resetInviteForm();
       setIsInviteModalOpen(false);
       await loadAll();
+      if (result.emailSent === false) {
+        setInviteEmailWarning(
+          `${result.name} was added, but the invite email failed to send. They can use "Forgot password" on the login screen with ${result.email} once you confirm it's correct.`
+        );
+      }
     } catch (err) {
       setInviteError(extractErrorMessage(err, 'Failed to add staff member.'));
     } finally {
@@ -313,6 +317,16 @@ export const StaffPage: React.FC = () => {
           </button>
         )}
       </div>
+
+      {inviteEmailWarning && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5 text-amber-400 text-xs">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span className="flex-1">{inviteEmailWarning}</span>
+          <button onClick={() => setInviteEmailWarning('')} className="text-amber-400/70 hover:text-amber-300">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       <div className="inline-flex gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl">
         {(['roles', 'staff'] as const).map((tab) => (
@@ -720,21 +734,9 @@ export const StaffPage: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Temporary Password</label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input
-                    type="password"
-                    required
-                    minLength={8}
-                    value={invitePassword}
-                    onChange={(e) => setInvitePassword(e.target.value)}
-                    placeholder="At least 8 characters"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
-                  />
-                </div>
-              </div>
+              <p className="text-[11px] text-slate-500 -mt-1">
+                They'll get an email with a link to set their own password.
+              </p>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">Role</label>

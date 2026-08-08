@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { MapPin } from 'lucide-react';
+import { MapPin, WifiOff, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { posApi } from '../../api/posApi';
 import type { Location } from '../../api/posApi';
+import { useOfflineQueueContext } from '../../offline/OfflineQueueContext';
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -13,6 +14,7 @@ function getInitials(name: string): string {
 export const Header: React.FC = () => {
   const { currentUser, currentRestaurant, currentLocation, isLocationRestricted, setCurrentLocation } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
+  const { isOnline, pendingCount } = useOfflineQueueContext();
 
   useEffect(() => {
     if (isLocationRestricted) return;
@@ -42,6 +44,21 @@ export const Header: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-4">
+        {!isOnline ? (
+          <span
+            title="No connection — orders and payments are being saved on this device and will sync automatically once you're back online."
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-full px-3 py-1.5"
+          >
+            <WifiOff className="w-3.5 h-3.5" /> Offline{pendingCount > 0 ? ` · ${pendingCount} to sync` : ''}
+          </span>
+        ) : pendingCount > 0 ? (
+          <span
+            title="Back online — syncing what was saved while you were offline."
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-full px-3 py-1.5"
+          >
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Syncing {pendingCount}
+          </span>
+        ) : null}
         {currentLocation && (
           <>
             {isLocationRestricted || locations.length <= 1 ? (

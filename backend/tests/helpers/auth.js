@@ -2,6 +2,7 @@ import request from 'supertest';
 import User from '../../models/User.js';
 import StaffMembership from '../../models/StaffMembership.js';
 import Role from '../../models/Role.js';
+import { hashResetToken } from '../../utils/resetToken.js';
 
 let counter = 0;
 
@@ -49,6 +50,30 @@ export async function createAuthedUser(app, overrides = {}) {
   const locationId = locationsRes.body[0]?._id;
 
   return { token, email, userId: user._id.toString(), restaurantId, locationId };
+}
+
+// Invites a staff member into an EXISTING restaurant via the real invite
+// endpoint (unlike createAuthedUser, which always spins up a brand-new
+// tenant), then completes the set-password flow the same way a real invite
+// email link would, and logs in. Returns { token, inviteRes } — inviteRes
+// for tests that want to assert on the invite response itself. Since
+// invites no longer carry a client-supplied password (see
+// staffController.js), the DB has only the reset token's hash — this mints
+// its own raw token and writes the matching hash directly, exactly like the
+// real emailed link would produce.
+export async function inviteAndLoginStaff(app, asOwnerReq, { name, email, roleId, locationId }) {
+  const inviteRes = await asOwnerReq(request(app).post('/api/staff/invite')).send({ name, email, roleId, locationId });
+
+  const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+passwordResetTokenHash');
+  const rawToken = `test-token-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  user.passwordResetTokenHash = hashResetToken(rawToken);
+  await user.save();
+
+  const password = 'testpassword123';
+  await request(app).post('/api/auth/reset-password').send({ token: rawToken, password });
+
+  const loginRes = await request(app).post('/api/auth/login').send({ email, password });
+  return { token: loginRes.body.token, inviteRes };
 }
 
 // Chains the Authorization + X-Location-Id headers onto a supertest

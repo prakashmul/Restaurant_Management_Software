@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Mail, X, LogIn, UserPlus, User, Store, AlertCircle, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, X, LogIn, UserPlus, User, Store, AlertCircle, CheckCircle2, ShieldCheck, KeyRound } from 'lucide-react';
 import { API_ROOT } from '../api/posApi';
 import type { AuthRestaurant } from './AuthContext';
 
@@ -31,11 +31,24 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
   const [requiresTotp, setRequiresTotp] = useState(false);
   const [totpToken, setTotpToken] = useState('');
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
 
   if (!isOpen) return null;
 
   const toggleMode = () => {
     setIsSignUp(!isSignUp);
+    setError('');
+    setSuccessMessage('');
+  };
+
+  const openForgotPassword = () => {
+    setIsForgotPassword(true);
+    setError('');
+    setSuccessMessage('');
+  };
+
+  const backToSignIn = () => {
+    setIsForgotPassword(false);
     setError('');
     setSuccessMessage('');
   };
@@ -52,6 +65,30 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     e.preventDefault();
     setError('');
     setSuccessMessage('');
+
+    if (isForgotPassword) {
+      if (!email) {
+        setError('Please enter your email.');
+        return;
+      }
+      try {
+        setLoading(true);
+        const response = await fetch(`${API_BASE_URL}/forgot-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Something went wrong. Please try again.');
+        setSuccessMessage(data.message);
+        setEmail('');
+      } catch (err: any) {
+        setError(err.message || 'Failed to connect to backend server.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     if (isSignUp && !name) {
       setError('Please enter your full name.');
@@ -143,13 +180,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
         <div className="text-center space-y-2 mb-6">
           <div className="w-12 h-12 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto">
-            {requiresTotp ? <ShieldCheck className="w-6 h-6" /> : isSignUp ? <UserPlus className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
+            {isForgotPassword ? <KeyRound className="w-6 h-6" /> : requiresTotp ? <ShieldCheck className="w-6 h-6" /> : isSignUp ? <UserPlus className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
           </div>
           <h2 className="text-xl font-bold text-white tracking-tight">
-            {requiresTotp ? 'Two-Factor Authentication' : isSignUp ? 'Register Your Restaurant' : 'Sign In'}
+            {isForgotPassword ? 'Reset Password' : requiresTotp ? 'Two-Factor Authentication' : isSignUp ? 'Register Your Restaurant' : 'Sign In'}
           </h2>
           <p className="text-xs text-slate-400">
-            {requiresTotp
+            {isForgotPassword
+              ? "Enter your account's email and we'll send you a reset link"
+              : requiresTotp
               ? 'Enter the 6-digit code from your authenticator app'
               : isSignUp
               ? 'Create your restaurant and become its Owner'
@@ -172,7 +211,23 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {requiresTotp ? (
+          {isForgotPassword ? (
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Email Address</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="email"
+                  autoFocus
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@restaurant.com"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                />
+              </div>
+            </div>
+          ) : requiresTotp ? (
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">Authentication Code</label>
               <div className="relative">
@@ -263,7 +318,27 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               />
             </div>
           </div>
+
+          {!isSignUp && (
+            <button
+              type="button"
+              onClick={openForgotPassword}
+              className="text-xs text-indigo-400 hover:text-indigo-300 underline underline-offset-2 -mt-1"
+            >
+              Forgot password?
+            </button>
+          )}
             </>
+          )}
+
+          {isForgotPassword && (
+            <button
+              type="button"
+              onClick={backToSignIn}
+              className="text-xs text-slate-400 hover:text-slate-200 underline underline-offset-2"
+            >
+              Back to sign in
+            </button>
           )}
 
           {requiresTotp && (
@@ -283,6 +358,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           >
             {loading ? (
               'Processing...'
+            ) : isForgotPassword ? (
+              <>
+                <KeyRound className="w-4 h-4" /> Send Reset Link
+              </>
             ) : requiresTotp ? (
               <>
                 <ShieldCheck className="w-4 h-4" /> Verify
@@ -299,7 +378,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </button>
         </form>
 
-        {!requiresTotp && (
+        {!requiresTotp && !isForgotPassword && (
         <div className="mt-5 text-center text-xs text-slate-400">
           {isSignUp ? (
             <p>

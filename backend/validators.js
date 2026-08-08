@@ -22,10 +22,20 @@ export const totpTokenSchema = z.object({
     .regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app.'),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().email('A valid email is required.'),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().trim().min(1, 'Reset token is required.'),
+  password: z.string().min(8, 'Password must be at least 8 characters.'),
+});
+
+// No password field — a new staff member gets one via an emailed set-password
+// link (see staffController.js inviteStaff), never typed by the inviter.
 export const staffInviteSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
   email: z.string().trim().email('A valid email is required.'),
-  password: z.string().min(8, 'Password must be at least 8 characters.'),
   roleId: z.string().trim().min(1, 'A role is required.'),
   // Omit or null = unrestricted (sees every location); set = confined to one.
   locationId: z.string().trim().min(1).nullable().optional(),

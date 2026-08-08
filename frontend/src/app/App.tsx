@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { PosPage } from '../features/pos/PosPage';
 import { KitchenDisplayPage } from '../features/kitchen/KitchenDisplayPage';
 import { ReservationsPage } from '../features/reservations/ReservationsPage';
@@ -20,12 +20,15 @@ import { TransfersPage } from '../features/transfers/TransfersPage';
 import { CustomersPage } from '../features/customers/CustomersPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { LoginModal } from '../auth/LoginModal';
+import { ResetPasswordPage } from '../auth/ResetPasswordPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { AuthProvider, useAuth } from '../auth/AuthContext';
+import { OfflineQueueProvider } from '../offline/OfflineQueueContext';
 import { posApi } from '../api/posApi';
 
 function AppShell() {
   const { currentUser, currentLocation, setCurrentLocation, login, logout } = useAuth();
+  const location = useLocation();
 
   // Open modal automatically on initial load if no user session exists
   const [isLoginOpen, setIsLoginOpen] = useState<boolean>(!currentUser);
@@ -66,6 +69,12 @@ function AppShell() {
     logout();
     setIsLoginOpen(true); // Re-open login modal on logout
   };
+
+  // Reachable regardless of login state — a set-password/reset link from an
+  // email must work whether or not this browser already has a session.
+  if (location.pathname === '/reset-password') {
+    return <ResetPasswordPage />;
+  }
 
   // If user is not logged in, render ONLY the LoginModal backdrop
   if (!currentUser) {
@@ -140,9 +149,11 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppShell />
-      </BrowserRouter>
+      <OfflineQueueProvider>
+        <BrowserRouter>
+          <AppShell />
+        </BrowserRouter>
+      </OfflineQueueProvider>
     </AuthProvider>
   );
 }

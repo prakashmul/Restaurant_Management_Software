@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { validate } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
-import { registerSchema, loginSchema, totpTokenSchema } from '../validators.js';
+import { registerSchema, loginSchema, totpTokenSchema, forgotPasswordSchema, resetPasswordSchema } from '../validators.js';
 import {
   register,
   login,
@@ -10,6 +10,8 @@ import {
   setupTotp,
   enableTotp,
   disableTotp,
+  forgotPassword,
+  resetPassword,
 } from '../controllers/authController.js';
 
 // Tighter limit on auth routes specifically, to blunt password-guessing attempts.
@@ -29,6 +31,8 @@ const router = Router();
 
 router.post('/register', authLimiter, validate(registerSchema), register);
 router.post('/login', authLimiter, validate(loginSchema), login);
+router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), forgotPassword);
+router.post('/reset-password', authLimiter, validate(resetPasswordSchema), resetPassword);
 
 router.get('/2fa/status', requireAuth, getTotpStatus);
 router.post('/2fa/setup', requireAuth, setupTotp);

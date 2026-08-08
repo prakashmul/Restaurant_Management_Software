@@ -4,6 +4,7 @@ import { posApi } from '../../api/posApi';
 import { TableDetailModal } from './TableDetailModal';
 import { CategoryModal } from './CategoryModal';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { useOfflineQueueContext } from '../../offline/OfflineQueueContext';
 import type { Table, MenuItem, OrderItem, Order, InventoryItem } from '../../types';
 
 // Helper function to safely extract string IDs across Mongo populated objects or standard strings
@@ -36,6 +37,8 @@ export const PosPage = () => {
   // New Table Form States
   const [newTableNum, setNewTableNum] = useState('');
   const [newTableSeats, setNewTableSeats] = useState('4');
+
+  const { saveOrderResilient, payOrderResilient } = useOfflineQueueContext();
 
   const loadData = async () => {
     try {
@@ -230,9 +233,15 @@ export const PosPage = () => {
     const tableId = getId(selectedTable);
 
     try {
-      await posApi.saveOrder(tableId, currentCart);
-      await loadData();
-      alert(`Order saved for Table #${selectedTable.number}`);
+      const result = await saveOrderResilient(tableId, selectedTable.number, currentCart);
+      if (result.synced) {
+        await loadData();
+        alert(`Order saved for Table #${selectedTable.number}`);
+      } else {
+        alert(
+          `No connection — Table #${selectedTable.number}'s order is saved on this device and will sync automatically once you're back online.`
+        );
+      }
     } catch (err) {
       console.error('Save order failed:', err);
       alert('Failed to save order.');
@@ -245,8 +254,15 @@ export const PosPage = () => {
 
     try {
       if (currentCart.length > 0) {
-        await posApi.saveOrder(tableId, currentCart);
-        await loadData();
+        const result = await saveOrderResilient(tableId, selectedTable.number, currentCart);
+        if (result.synced) {
+          await loadData();
+        } else {
+          alert(
+            `No connection — the new items are saved on this device and will sync once you're back online. Payment isn't available for them until then, but you can still pay whatever was already on the bill.`
+          );
+          return;
+        }
       }
       setModalTable(selectedTable);
     } catch (err) {
@@ -540,7 +556,7 @@ export const PosPage = () => {
                 await posApi.processFullCredit(orderId, customerDetails.customerName, customerDetails.customerPhone);
               }
             } else {
-              await posApi.payOrder(orderId, paymentMethod);
+              await payOrderResilient(getId(modalTable), modalTable?.number || 0, orderId, paymentMethod);
             }
           }}
           onVoidOrder={async (tableId: string, reason: string) => {

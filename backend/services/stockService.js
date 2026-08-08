@@ -5,11 +5,13 @@ import Stock from '../models/Stock.js';
 import StockHistory from '../models/StockHistory.js';
 
 // Deducts recipe ingredients for every item in the order. Must run inside
-// the caller's transaction session. Throws (aborting the transaction) if
-// any ingredient doesn't have enough stock, instead of silently clamping to
-// zero the way the original implementation did. Deducts from the order's own
-// location's Stock pool — an order can only ever consume the stock physically
-// present at the location it was placed at.
+// the caller's transaction session. Stock levels are informational — a
+// low-stock reminder, not a gate — so this always deducts and lets an order
+// go through even if it takes an ingredient negative; staff can substitute
+// in practice, and a negative count just flags that the tracked number is
+// now behind reality until the next restock/count. Deducts from the order's
+// own location's Stock pool — an order can only ever consume the stock
+// physically present at the location it was placed at.
 export async function deductStockForOrder(order, performedByTag, session) {
   const restaurantId = order.restaurantId;
   const locationId = order.locationId;
@@ -40,24 +42,14 @@ export async function deductStockForOrder(order, performedByTag, session) {
 
       const totalDeduction = recipeIngredient.quantityPerPortion * orderItem.quantity;
 
-      // Atomic conditional decrement — only succeeds if enough stock exists right now,
-      // so two simultaneous payments can never both deduct from the same units.
-      const updatedStock = await Stock.findOneAndUpdate(
-        {
-          restaurantId,
-          locationId,
-          inventoryItemId: invItem._id,
-          totalQuantity: { $gte: totalDeduction },
-        },
+      // Atomic decrement — always succeeds (upserts the Stock doc if it
+      // doesn't exist yet), so concurrent orders still sum correctly and
+      // nothing ever blocks on the current quantity.
+      await Stock.findOneAndUpdate(
+        { restaurantId, locationId, inventoryItemId: invItem._id },
         { $inc: { totalQuantity: -totalDeduction } },
-        { returnDocument: 'after', session }
+        { upsert: true, session }
       );
-
-      if (!updatedStock) {
-        throw Object.assign(new Error(`Not enough stock of "${invItem.name}" to complete this order.`), {
-          status: 409,
-        });
-      }
 
       await StockHistory.create(
         [

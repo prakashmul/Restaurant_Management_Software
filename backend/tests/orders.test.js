@@ -97,7 +97,7 @@ describe('payment transaction', () => {
     expect(inv.totalQuantity).toBe(6); // 10 - 4
   });
 
-  it('rejects payment when stock is insufficient and rolls back cleanly', async () => {
+  it('pays an order even when stock is insufficient, taking it negative', async () => {
     const { tableId, menuItemId, inventoryItemId } = await setupOrderFixtures(104, 1); // only 1 unit in stock
 
     const saved = await auth(request(app).post('/api/orders/save')).send({
@@ -106,17 +106,14 @@ describe('payment transaction', () => {
     });
     const orderId = saved.body._id;
 
+    // Stock is a low-stock reminder, not a gate — payment must go through
+    // and stock deducts anyway, since staff can substitute in practice.
     const payRes = await auth(request(app).post(`/api/orders/${orderId}/pay`)).send({ paymentMethod: 'cash' });
-    expect(payRes.status).toBe(409);
+    expect(payRes.status).toBe(200);
+    expect(payRes.body.order.status).toBe('paid');
 
-    // Transaction must have rolled back completely: order still pending, stock untouched.
-    const ordersRes = await auth(request(app).get('/api/orders'));
-    const order = ordersRes.body.find((o) => o._id === orderId);
-    expect(order.status).toBe('pending');
-
-    const invRes = await auth(request(app).get('/api/inventory'));
-    const inv = invRes.body.find((i) => i._id === inventoryItemId);
-    expect(inv.totalQuantity).toBe(1);
+    const inv = payRes.body.inventory.find((i) => i._id === inventoryItemId);
+    expect(inv.totalQuantity).toBe(-1); // 1 - 2
   });
 
   it('rejects paying an order twice', async () => {

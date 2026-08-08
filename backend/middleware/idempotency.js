@@ -27,7 +27,11 @@ export function idempotent(req, res, next) {
 
   const originalJson = res.json.bind(res);
   res.json = (body) => {
-    if (res.statusCode < 500) {
+    // Only cache success: a failed attempt (insufficient stock, a validation
+    // error, etc.) made no side effect worth protecting against duplication,
+    // and caching it would just block a legitimate retry after the underlying
+    // problem is fixed until the TTL expires.
+    if (res.statusCode >= 200 && res.statusCode < 300) {
       cache.set(key, { status: res.statusCode, body, expiresAt: Date.now() + TTL_MS });
     }
     return originalJson(body);

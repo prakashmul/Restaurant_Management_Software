@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Package, PlusCircle, History, User, FileText, ArrowUpRight, ArrowDownRight, X, Printer, Calendar, AlertTriangle, Bell, Check, Trash2, Receipt, RefreshCw } from 'lucide-react';
+import { Package, PlusCircle, History, FileText, ArrowUpRight, ArrowDownRight, X, Printer, Calendar, AlertTriangle, Bell, Check, Trash2, Receipt, RefreshCw } from 'lucide-react';
 import { posApi } from '../../api/posApi';
 import type { PriceHistoryEntry, Vendor } from '../../api/posApi';
 import { useAuth } from '../../auth/AuthContext';
@@ -19,7 +19,8 @@ type StockHistoryLog = {
 };
 
 export const InventoryPage = () => {
-  const { isOwner, currentLocation } = useAuth();
+  const { isOwner, currentLocation, currentUser } = useAuth();
+  const performedByName = currentUser?.name || 'Unknown';
 
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [history, setHistory] = useState<StockHistoryLog[]>([]);
@@ -30,7 +31,6 @@ export const InventoryPage = () => {
   const [newUnit, setNewUnit] = useState('');
   const [newCostPerUnit, setNewCostPerUnit] = useState('');
   const [newLowStockThreshold, setNewLowStockThreshold] = useState('');
-  const [newPerformedBy, setNewPerformedBy] = useState('');
   const [newDescription, setNewDescription] = useState('');
 
   const [thresholdEdits, setThresholdEdits] = useState<{ [key: string]: string }>({});
@@ -39,7 +39,6 @@ export const InventoryPage = () => {
   const [wasteModalItem, setWasteModalItem] = useState<InventoryItem | null>(null);
   const [wasteQuantity, setWasteQuantity] = useState('');
   const [wasteReason, setWasteReason] = useState<'spoilage' | 'breakage' | 'staff-meal' | 'other'>('spoilage');
-  const [wastePerformedBy, setWastePerformedBy] = useState('');
   const [wasteDescription, setWasteDescription] = useState('');
   const [isLoggingWaste, setIsLoggingWaste] = useState(false);
 
@@ -59,7 +58,6 @@ export const InventoryPage = () => {
   const historyRef = useRef<HTMLDivElement>(null);
 
   const [restockAmount, setRestockAmount] = useState<{ [key: string]: string }>({});
-  const [performedBy, setPerformedBy] = useState<{ [key: string]: string }>({});
   const [description, setDescription] = useState<{ [key: string]: string }>({});
 
   const loadInventory = async () => {
@@ -111,11 +109,10 @@ export const InventoryPage = () => {
     if (!itemId) return;
 
     const qtyStr = restockAmount[itemId]?.trim();
-    const by = performedBy[itemId]?.trim();
     const desc = description[itemId]?.trim();
 
-    if (!qtyStr || !by || !desc) {
-      alert('Please fill out all fields: Quantity, Performed By, and Reason/Note.');
+    if (!qtyStr || !desc) {
+      alert('Please fill out all fields: Quantity and Reason/Note.');
       return;
     }
 
@@ -126,10 +123,9 @@ export const InventoryPage = () => {
     }
 
     try {
-      await posApi.restockItem(itemId, qty, { performedBy: by, description: desc });
+      await posApi.restockItem(itemId, qty, { performedBy: performedByName, description: desc });
 
       setRestockAmount((prev) => ({ ...prev, [itemId]: '' }));
-      setPerformedBy((prev) => ({ ...prev, [itemId]: '' }));
       setDescription((prev) => ({ ...prev, [itemId]: '' }));
 
       await loadAllData();
@@ -144,7 +140,7 @@ export const InventoryPage = () => {
   const handleAddIngredient = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!newIngredientName.trim() || !newInitialStock.trim() || !newUnit.trim() || !newPerformedBy.trim() || !newDescription.trim()) {
+    if (!newIngredientName.trim() || !newInitialStock.trim() || !newUnit.trim() || !newDescription.trim()) {
       alert('Please fill out all required fields.');
       return;
     }
@@ -166,7 +162,7 @@ export const InventoryPage = () => {
           unit: newUnit.trim(),
           costPerUnit: cost,
           lowStockThreshold: threshold,
-          performedBy: newPerformedBy.trim(),
+          performedBy: performedByName,
           description: newDescription.trim(),
         });
       } else {
@@ -178,7 +174,6 @@ export const InventoryPage = () => {
       setNewUnit('');
       setNewCostPerUnit('');
       setNewLowStockThreshold('');
-      setNewPerformedBy('');
       setNewDescription('');
       setIsAddModalOpen(false);
 
@@ -221,7 +216,6 @@ export const InventoryPage = () => {
     setWasteModalItem(item);
     setWasteQuantity('');
     setWasteReason('spoilage');
-    setWastePerformedBy('');
     setWasteDescription('');
   };
 
@@ -236,15 +230,10 @@ export const InventoryPage = () => {
       alert('Please enter a valid amount wasted, greater than 0.');
       return;
     }
-    if (!wastePerformedBy.trim()) {
-      alert('Please enter who is logging this waste.');
-      return;
-    }
-
     try {
       setIsLoggingWaste(true);
       await posApi.logWaste(itemId, qty, wasteReason, {
-        performedBy: wastePerformedBy.trim(),
+        performedBy: performedByName,
         description: wasteDescription.trim(),
       });
       setWasteModalItem(null);
@@ -472,26 +461,11 @@ export const InventoryPage = () => {
                           className="w-24 bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                         />
                         <div className="relative">
-                          <User className="w-3.5 h-3.5 absolute left-2 top-2.5 text-slate-500" />
-                          <input
-                            type="text"
-                            required
-                            placeholder="By whom? *"
-                            value={itemId ? performedBy[itemId] || '' : ''}
-                            onChange={(e) => {
-                              if (itemId) {
-                                setPerformedBy({ ...performedBy, [itemId]: e.target.value });
-                              }
-                            }}
-                            className="w-28 pl-7 bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                        <div className="relative">
                           <FileText className="w-3.5 h-3.5 absolute left-2 top-2.5 text-slate-500" />
                           <input
                             type="text"
                             required
-                            placeholder="Reason / Note *"
+                            placeholder="Remarks *"
                             value={itemId ? description[itemId] || '' : ''}
                             onChange={(e) => {
                               if (itemId) {
@@ -744,18 +718,6 @@ export const InventoryPage = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Performed By *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Your Name"
-                  value={newPerformedBy}
-                  onChange={(e) => setNewPerformedBy(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">Reason / Description *</label>
                 <input
                   type="text"
@@ -830,18 +792,6 @@ export const InventoryPage = () => {
                   <option value="staff-meal">Staff Meal</option>
                   <option value="other">Other</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Logged By *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Your Name"
-                  value={wastePerformedBy}
-                  onChange={(e) => setWastePerformedBy(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:border-rose-500"
-                />
               </div>
 
               <div>

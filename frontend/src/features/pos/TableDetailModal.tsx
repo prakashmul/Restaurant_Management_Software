@@ -381,9 +381,9 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
       }
 
       setPaymentSuccess(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Payment Error:', err);
-      alert('Failed to process order payment.');
+      alert(err?.response?.data?.message || 'Failed to process order payment.');
     } finally {
       setIsProcessing(false);
     }

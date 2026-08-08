@@ -139,42 +139,73 @@ export const CustomersPage: React.FC = () => {
             {search ? 'No customers match that search.' : 'No customers yet — they appear here after a credit order.'}
           </div>
         ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
-                <th className="text-left font-semibold px-5 py-3">Name</th>
-                <th className="text-left font-semibold px-5 py-3">Phone</th>
-                <th className="text-right font-semibold px-5 py-3">Orders</th>
-                <th className="text-right font-semibold px-5 py-3">Lifetime Spend</th>
-                <th className="text-right font-semibold px-5 py-3">Outstanding</th>
-                <th className="text-right font-semibold px-5 py-3">Points</th>
-                <th className="text-left font-semibold px-5 py-3">Last Order</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/80">
+          <>
+            {/* Mobile: one card per customer */}
+            <div className="sm:hidden divide-y divide-slate-800/80">
               {filtered.map((c) => (
-                <tr
+                <button
                   key={c._id}
                   onClick={() => openDetail(c._id)}
-                  className="hover:bg-slate-800/30 transition cursor-pointer"
+                  className="w-full text-left px-4 py-3 hover:bg-slate-800/30 transition"
                 >
-                  <td className="px-5 py-3 font-semibold text-slate-200">{c.name}</td>
-                  <td className="px-5 py-3 text-slate-400">{c.phone || '—'}</td>
-                  <td className="px-5 py-3 text-right tabular-nums">{c.ordersCount}</td>
-                  <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-200">
-                    Rs. {c.lifetimeSpend.toFixed(0)}
-                  </td>
-                  <td className={`px-5 py-3 text-right tabular-nums font-semibold ${c.outstandingCredit > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
-                    Rs. {c.outstandingCredit.toFixed(0)}
-                  </td>
-                  <td className="px-5 py-3 text-right tabular-nums font-semibold text-amber-400">
-                    {c.pointsBalance}
-                  </td>
-                  <td className="px-5 py-3 text-slate-400">{formatDate(c.lastOrderAt)}</td>
-                </tr>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-200 truncate">{c.name}</span>
+                    <span className="text-xs font-bold tabular-nums text-slate-200 shrink-0">
+                      Rs. {c.lifetimeSpend.toFixed(0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mt-1 text-[10.5px] text-slate-400">
+                    <span className="truncate">{c.phone || '—'} · {c.ordersCount} orders · {formatDate(c.lastOrderAt)}</span>
+                    {c.outstandingCredit > 0 ? (
+                      <span className="text-amber-400 font-semibold shrink-0">Owes Rs. {c.outstandingCredit.toFixed(0)}</span>
+                    ) : (
+                      <span className="text-amber-400 font-semibold shrink-0">{c.pointsBalance} pts</span>
+                    )}
+                  </div>
+                </button>
               ))}
-            </tbody>
-          </table>
+            </div>
+
+            {/* Tablet/desktop: full table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
+                    <th className="text-left font-semibold px-5 py-3">Name</th>
+                    <th className="text-left font-semibold px-5 py-3">Phone</th>
+                    <th className="text-right font-semibold px-5 py-3">Orders</th>
+                    <th className="text-right font-semibold px-5 py-3">Lifetime Spend</th>
+                    <th className="text-right font-semibold px-5 py-3">Outstanding</th>
+                    <th className="text-right font-semibold px-5 py-3">Points</th>
+                    <th className="text-left font-semibold px-5 py-3">Last Order</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/80">
+                  {filtered.map((c) => (
+                    <tr
+                      key={c._id}
+                      onClick={() => openDetail(c._id)}
+                      className="hover:bg-slate-800/30 transition cursor-pointer"
+                    >
+                      <td className="px-5 py-3 font-semibold text-slate-200">{c.name}</td>
+                      <td className="px-5 py-3 text-slate-400">{c.phone || '—'}</td>
+                      <td className="px-5 py-3 text-right tabular-nums">{c.ordersCount}</td>
+                      <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-200">
+                        Rs. {c.lifetimeSpend.toFixed(0)}
+                      </td>
+                      <td className={`px-5 py-3 text-right tabular-nums font-semibold ${c.outstandingCredit > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
+                        Rs. {c.outstandingCredit.toFixed(0)}
+                      </td>
+                      <td className="px-5 py-3 text-right tabular-nums font-semibold text-amber-400">
+                        {c.pointsBalance}
+                      </td>
+                      <td className="px-5 py-3 text-slate-400">{formatDate(c.lastOrderAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -228,7 +259,7 @@ export const CustomersPage: React.FC = () => {
                       <h2 className="text-lg font-bold text-white">{detail.customer.name}</h2>
                       <button
                         onClick={() => setIsEditing(true)}
-                        className="text-slate-500 hover:text-indigo-400 transition"
+                        className="text-slate-500 hover:text-indigo-400 transition p-1.5 sm:p-0 -m-1.5 sm:m-0"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>

@@ -280,7 +280,7 @@ export const ReservationsPage: React.FC = () => {
                       {(entry.status === 'pending' || entry.status === 'waiting') && entry.type === 'reservation' && (
                         <button
                           onClick={() => handleStatusChange(entry, 'confirmed')}
-                          className="p-2 hover:bg-emerald-500/10 rounded-lg text-slate-400 hover:text-emerald-400 transition"
+                          className="p-3 sm:p-2 hover:bg-emerald-500/10 rounded-lg text-slate-400 hover:text-emerald-400 transition"
                           title="Confirm"
                         >
                           <Check className="w-4 h-4" />
@@ -289,7 +289,7 @@ export const ReservationsPage: React.FC = () => {
                       {['pending', 'confirmed', 'waiting'].includes(entry.status) && (
                         <button
                           onClick={() => handleStatusChange(entry, 'seated')}
-                          className="p-2 hover:bg-indigo-500/10 rounded-lg text-slate-400 hover:text-indigo-400 transition"
+                          className="p-3 sm:p-2 hover:bg-indigo-500/10 rounded-lg text-slate-400 hover:text-indigo-400 transition"
                           title="Mark Seated"
                         >
                           <UserCheck className="w-4 h-4" />
@@ -298,7 +298,7 @@ export const ReservationsPage: React.FC = () => {
                       {['pending', 'confirmed', 'waiting'].includes(entry.status) && (
                         <button
                           onClick={() => handleStatusChange(entry, 'no-show')}
-                          className="p-2 hover:bg-amber-500/10 rounded-lg text-slate-400 hover:text-amber-400 transition"
+                          className="p-3 sm:p-2 hover:bg-amber-500/10 rounded-lg text-slate-400 hover:text-amber-400 transition"
                           title="No-show"
                         >
                           <ShieldAlert className="w-4 h-4" />
@@ -307,7 +307,7 @@ export const ReservationsPage: React.FC = () => {
                       {['pending', 'confirmed', 'waiting'].includes(entry.status) && (
                         <button
                           onClick={() => handleStatusChange(entry, 'cancelled')}
-                          className="p-2 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition"
+                          className="p-3 sm:p-2 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition"
                           title="Cancel"
                         >
                           <X className="w-4 h-4" />
@@ -315,7 +315,7 @@ export const ReservationsPage: React.FC = () => {
                       )}
                       <button
                         onClick={() => handleDelete(entry)}
-                        className="p-2 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition"
+                        className="p-3 sm:p-2 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition"
                         title="Remove"
                       >
                         <Trash2 className="w-4 h-4" />

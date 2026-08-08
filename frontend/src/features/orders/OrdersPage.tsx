@@ -520,7 +520,7 @@ export const OrdersPage: React.FC = () => {
                 <div key={orderId} className="bg-slate-900 transition hover:bg-slate-800/30">
                   <div
                     onClick={() => toggleExpand(orderId)}
-                    className="p-4 flex items-center justify-between cursor-pointer"
+                    className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 cursor-pointer"
                   >
                     <div className="flex items-center gap-4">
                       <button className="text-slate-400 hover:text-slate-200">
@@ -539,7 +539,7 @@ export const OrdersPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-4 md:gap-6">
+                    <div className="flex items-center flex-wrap gap-3 sm:gap-4 md:gap-6 pl-9 sm:pl-0">
                       <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg">
                         <CreditCard className="w-3 h-3 text-indigo-400" />
                         <span className="text-[10px] font-mono font-semibold text-slate-300">
@@ -558,7 +558,7 @@ export const OrdersPage: React.FC = () => {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={(e) => handlePrintReceipt(ord, e)}
-                          className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 transition"
+                          className="p-3 sm:p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 transition"
                           title="Print Receipt"
                         >
                           <Printer className="w-4 h-4" />
@@ -566,7 +566,7 @@ export const OrdersPage: React.FC = () => {
                         {canRefund && (
                           <button
                             onClick={(e) => handleRefundOrder(orderId, e)}
-                            className="p-2 hover:bg-amber-500/10 rounded-lg text-slate-400 hover:text-amber-400 transition"
+                            className="p-3 sm:p-2 hover:bg-amber-500/10 rounded-lg text-slate-400 hover:text-amber-400 transition"
                             title="Refund Order"
                           >
                             <RotateCcw className="w-4 h-4" />
@@ -574,7 +574,7 @@ export const OrdersPage: React.FC = () => {
                         )}
                         <button
                           onClick={(e) => handleDeleteOrder(orderId, e)}
-                          className="p-2 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition"
+                          className="p-3 sm:p-2 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition"
                           title="Delete Order"
                         >
                           <Trash2 className="w-4 h-4" />

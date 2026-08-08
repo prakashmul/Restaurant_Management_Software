@@ -191,7 +191,7 @@ export const LocationsPage: React.FC = () => {
                       <div className="text-xs text-slate-500 mt-1">{loc.address || 'No address set'}</div>
                       <div className="text-xs text-slate-500">{loc.phone || 'No phone set'}</div>
                     </div>
-                    <button onClick={() => handleDelete(loc)} className="text-slate-500 hover:text-rose-400 transition p-1">
+                    <button onClick={() => handleDelete(loc)} className="text-slate-500 hover:text-rose-400 transition p-2 sm:p-1">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>

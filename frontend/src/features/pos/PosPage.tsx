@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle, FolderPlus, Users } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle, FolderPlus, Users, ShoppingCart, ChevronUp, X } from 'lucide-react';
 import { posApi } from '../../api/posApi';
 import { TableDetailModal } from './TableDetailModal';
 import { CategoryModal } from './CategoryModal';
@@ -26,6 +26,10 @@ export const PosPage = () => {
   // Which diner new items get added to. null = unassigned/shared (e.g. a
   // starter for the whole table) — the default, so split-by-seat is opt-in.
   const [activeSeat, setActiveSeat] = useState<number | null>(null);
+
+  // Mobile/tablet only — the cart lives in a slide-up sheet below lg instead
+  // of a permanent column, opened from the persistent bottom bar.
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
   // Modal States
   const [showTableModal, setShowTableModal] = useState(false);
@@ -221,6 +225,7 @@ export const PosPage = () => {
       try {
         await posApi.cancelTableOrder(tableId);
         setCurrentCart([]);
+        setIsCartOpen(false);
         await loadData();
       } catch (err) {
         alert('Failed to clear order.');
@@ -235,6 +240,7 @@ export const PosPage = () => {
     try {
       const result = await saveOrderResilient(tableId, selectedTable.number, currentCart);
       if (result.synced) {
+        setIsCartOpen(false);
         await loadData();
         alert(`Order saved for Table #${selectedTable.number}`);
       } else {
@@ -264,6 +270,7 @@ export const PosPage = () => {
           return;
         }
       }
+      setIsCartOpen(false);
       setModalTable(selectedTable);
     } catch (err) {
       console.error('Failed to prepare bill payment:', err);
@@ -272,9 +279,142 @@ export const PosPage = () => {
   };
 
   const subtotal = currentCart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0);
+  const cartItemCount = currentCart.reduce((sum, item) => sum + (item.quantity || 0), 0);
+
+  // Shared between the permanent desktop column and the mobile slide-up
+  // sheet — same live state, just two different places to display it.
+  const cartTopSection = (
+    <>
+      <div className="border-b border-slate-800 pb-3 mb-4 flex justify-between items-center">
+        <div>
+          <h2 className="font-bold text-base text-slate-100">
+            {selectedTable ? `Table #${selectedTable.number} Order` : 'No Table Selected'}
+          </h2>
+          <p className="text-xs text-slate-400">Items added for current seat</p>
+        </div>
+        {currentCart.length > 0 && (
+          <button
+            onClick={handleCancelOrder}
+            className="text-xs text-rose-400 flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-lg"
+          >
+            <XCircle className="w-3.5 h-3.5" /> Clear
+          </button>
+        )}
+      </div>
+
+      {selectedTable && (
+        <div className="mb-3 -mt-1">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+            <Users className="w-3 h-3" /> Adding items for
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setActiveSeat(null)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                activeSeat === null
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Shared
+            </button>
+            {Array.from({ length: Math.max(selectedTable.seats || 4, 1) }, (_, i) => i + 1).map((seat) => (
+              <button
+                key={seat}
+                onClick={() => setActiveSeat(seat)}
+                className={`w-8 h-7 rounded-lg text-[11px] font-bold transition ${
+                  activeSeat === seat
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {seat}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const cartItemsList = (
+    <div className="space-y-3 lg:max-h-[450px] overflow-y-auto pr-1">
+      {currentCart.length === 0 ? (
+        <div className="text-center text-slate-500 text-xs py-12">
+          Click a category card to add items to Table #{selectedTable?.number}.
+        </div>
+      ) : (
+        Object.entries(
+          currentCart.reduce<Record<string, OrderItem[]>>((groups, item) => {
+            const key = item.seatNumber != null ? `Seat ${item.seatNumber}` : 'Shared';
+            (groups[key] ||= []).push(item);
+            return groups;
+          }, {})
+        )
+          .sort(([a], [b]) => (a === 'Shared' ? -1 : b === 'Shared' ? 1 : a.localeCompare(b, undefined, { numeric: true })))
+          .map(([seatLabel, items]) => (
+            <div key={seatLabel} className="space-y-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{seatLabel}</div>
+              {items.map((item) => (
+                <div
+                  key={`${getId(item.menuItemId)}-${item.seatNumber ?? 'shared'}`}
+                  className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800"
+                >
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-200">{item.name}</h4>
+                    <span className="text-[10px] text-slate-400">Rs. {(item.price || 0).toFixed(2)} each</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => updateQty(getId(item.menuItemId), item.seatNumber ?? null, -1)}
+                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
+                    >
+                      -
+                    </button>
+                    <span className="text-xs font-mono font-bold w-4 text-center">{item.quantity}</span>
+                    <button
+                      onClick={() => updateQty(getId(item.menuItemId), item.seatNumber ?? null, 1)}
+                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))
+      )}
+    </div>
+  );
+
+  const cartFooter = (
+    <div className="border-t border-slate-800 pt-4 space-y-3 mt-4">
+      <div className="flex justify-between text-sm font-bold text-slate-100">
+        <span>Total</span>
+        <span className="font-mono text-indigo-400">Rs. {subtotal.toFixed(2)}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={handleSaveOrder}
+          disabled={!selectedTable || currentCart.length === 0}
+          className="py-2.5 bg-slate-800 disabled:opacity-40 text-slate-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 hover:bg-slate-700 transition"
+        >
+          <CheckCircle2 className="w-3.5 h-3.5" /> Save
+        </button>
+        <button
+          onClick={handlePayBill}
+          disabled={!selectedTable || currentCart.length === 0}
+          className="py-2.5 bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 hover:bg-emerald-500 transition"
+        >
+          <CreditCard className="w-3.5 h-3.5" /> Pay
+        </button>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-950 text-slate-100">
+    <div className="p-6 pb-24 lg:pb-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-950 text-slate-100">
       {/* Left Column */}
       <div className="lg:col-span-8 space-y-6">
         {/* Table Selection */}
@@ -393,132 +533,53 @@ export const PosPage = () => {
         </div>
       </div>
 
-      {/* Right Column (Cart / Order Summary) */}
-      <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between">
+      {/* Right Column (Cart / Order Summary) — permanent at lg+, replaced by
+          a bottom bar + slide-up sheet below lg (see end of this component) */}
+      <div className="hidden lg:flex lg:col-span-4 flex-col justify-between bg-slate-900 border border-slate-800 rounded-2xl p-4">
         <div>
-          <div className="border-b border-slate-800 pb-3 mb-4 flex justify-between items-center">
-            <div>
-              <h2 className="font-bold text-base text-slate-100">
-                {selectedTable ? `Table #${selectedTable.number} Order` : 'No Table Selected'}
-              </h2>
-              <p className="text-xs text-slate-400">Items added for current seat</p>
-            </div>
-            {currentCart.length > 0 && (
-              <button
-                onClick={handleCancelOrder}
-                className="text-xs text-rose-400 flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-lg"
-              >
-                <XCircle className="w-3.5 h-3.5" /> Clear
-              </button>
-            )}
-          </div>
-
-          {selectedTable && (
-            <div className="mb-3 -mt-1">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                <Users className="w-3 h-3" /> Adding items for
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => setActiveSeat(null)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
-                    activeSeat === null
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  Shared
-                </button>
-                {Array.from({ length: Math.max(selectedTable.seats || 4, 1) }, (_, i) => i + 1).map((seat) => (
-                  <button
-                    key={seat}
-                    onClick={() => setActiveSeat(seat)}
-                    className={`w-8 h-7 rounded-lg text-[11px] font-bold transition ${
-                      activeSeat === seat
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {seat}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
-            {currentCart.length === 0 ? (
-              <div className="text-center text-slate-500 text-xs py-12">
-                Click a category card to add items to Table #{selectedTable?.number}.
-              </div>
-            ) : (
-              Object.entries(
-                currentCart.reduce<Record<string, OrderItem[]>>((groups, item) => {
-                  const key = item.seatNumber != null ? `Seat ${item.seatNumber}` : 'Shared';
-                  (groups[key] ||= []).push(item);
-                  return groups;
-                }, {})
-              )
-                .sort(([a], [b]) => (a === 'Shared' ? -1 : b === 'Shared' ? 1 : a.localeCompare(b, undefined, { numeric: true })))
-                .map(([seatLabel, items]) => (
-                  <div key={seatLabel} className="space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{seatLabel}</div>
-                    {items.map((item) => (
-                      <div
-                        key={`${getId(item.menuItemId)}-${item.seatNumber ?? 'shared'}`}
-                        className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800"
-                      >
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-200">{item.name}</h4>
-                          <span className="text-[10px] text-slate-400">Rs. {(item.price || 0).toFixed(2)} each</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => updateQty(getId(item.menuItemId), item.seatNumber ?? null, -1)}
-                            className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
-                          >
-                            -
-                          </button>
-                          <span className="text-xs font-mono font-bold w-4 text-center">{item.quantity}</span>
-                          <button
-                            onClick={() => updateQty(getId(item.menuItemId), item.seatNumber ?? null, 1)}
-                            className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))
-            )}
-          </div>
+          {cartTopSection}
+          {cartItemsList}
         </div>
-
-        <div className="border-t border-slate-800 pt-4 space-y-3 mt-4">
-          <div className="flex justify-between text-sm font-bold text-slate-100">
-            <span>Total</span>
-            <span className="font-mono text-indigo-400">Rs. {subtotal.toFixed(2)}</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={handleSaveOrder}
-              disabled={!selectedTable || currentCart.length === 0}
-              className="py-2.5 bg-slate-800 disabled:opacity-40 text-slate-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 hover:bg-slate-700 transition"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" /> Save
-            </button>
-            <button
-              onClick={handlePayBill}
-              disabled={!selectedTable || currentCart.length === 0}
-              className="py-2.5 bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 hover:bg-emerald-500 transition"
-            >
-              <CreditCard className="w-3.5 h-3.5" /> Pay
-            </button>
-          </div>
-        </div>
+        {cartFooter}
       </div>
+
+      {/* Mobile/tablet: persistent bottom bar, shown once something's in the cart */}
+      {selectedTable && currentCart.length > 0 && !isCartOpen && (
+        <button
+          onClick={() => setIsCartOpen(true)}
+          className="lg:hidden fixed inset-x-4 bottom-4 z-30 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl px-5 py-4 shadow-2xl shadow-indigo-900/40 flex items-center justify-between transition"
+        >
+          <span className="flex items-center gap-2 text-sm font-bold">
+            <ShoppingCart className="w-4 h-4" />
+            {cartItemCount} item{cartItemCount === 1 ? '' : 's'}
+          </span>
+          <span className="flex items-center gap-2 text-sm font-bold">
+            Rs. {subtotal.toFixed(2)}
+            <ChevronUp className="w-4 h-4" />
+          </span>
+        </button>
+      )}
+
+      {/* Mobile/tablet: slide-up cart sheet */}
+      {isCartOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex items-end">
+          <div onClick={() => setIsCartOpen(false)} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative w-full max-h-[88vh] bg-slate-900 border-t border-slate-800 rounded-t-3xl flex flex-col overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between px-4 pt-4 shrink-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Current Order</span>
+              <button
+                onClick={() => setIsCartOpen(false)}
+                className="p-2 -mr-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-4 pt-2 shrink-0">{cartTopSection}</div>
+            <div className="flex-1 overflow-y-auto px-4">{cartItemsList}</div>
+            <div className="px-4 pb-4 shrink-0">{cartFooter}</div>
+          </div>
+        </div>
+      )}
 
       {/* Category Items Modal */}
       {selectedCategoryModal && (

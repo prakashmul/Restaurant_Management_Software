@@ -134,14 +134,14 @@ export const SchedulingPage: React.FC = () => {
           </h1>
           <p className="text-xs text-slate-400 mt-1">Plan shifts ahead, then compare against actual clock-ins.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           <button
             onClick={() => setWeekStart((prev) => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() - 7))}
             className="p-2 rounded-lg border border-slate-800 bg-slate-900 hover:bg-slate-800 transition"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-xs font-semibold text-slate-300 tabular-nums w-40 text-center">
+          <span className="text-xs font-semibold text-slate-300 tabular-nums w-auto sm:w-40 text-center">
             {weekDays[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} –{' '}
             {weekDays[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
           </span>
@@ -154,7 +154,7 @@ export const SchedulingPage: React.FC = () => {
           {canManage && (
             <button
               onClick={() => openAddModal()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-indigo-600/20 ml-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-indigo-600/20 sm:ml-2"
             >
               <Plus className="w-3.5 h-3.5" /> Add shift
             </button>

@@ -150,47 +150,80 @@ export const HeadOfficePage: React.FC = () => {
             <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
               <h3 className="text-xs font-bold">Location ranking — sorted by food cost %, worst first</h3>
             </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
-                  <th className="text-left font-semibold px-5 py-3">Location</th>
-                  <th className="text-right font-semibold px-5 py-3">Sales (7d)</th>
-                  <th className="text-right font-semibold px-5 py-3">Food cost</th>
-                  <th className="text-right font-semibold px-5 py-3">Labor hours</th>
-                  <th className="text-right font-semibold px-5 py-3">Credit owed</th>
-                  <th className="text-left font-semibold px-5 py-3">7-day trend</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/80">
-                {ranked.map((loc) => (
-                  <tr key={loc.id} className="hover:bg-slate-800/30 transition">
-                    <td className="px-5 py-3 font-semibold text-slate-200">{loc.name}</td>
-                    <td className="px-5 py-3 text-right tabular-nums">Rs. {loc.sales7d.toFixed(0)}</td>
-                    <td
-                      className="px-5 py-3 text-right tabular-nums font-semibold"
+
+            {/* Mobile: one card per location */}
+            <div className="sm:hidden divide-y divide-slate-800/80">
+              {ranked.map((loc) => (
+                <div key={loc.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-200 truncate">{loc.name}</span>
+                    <span
+                      className="text-xs font-bold tabular-nums shrink-0"
                       style={{
                         color:
                           loc.foodCostStatus === 'good' ? '#10b981' : loc.foodCostStatus === 'watch' ? '#f59e0b' : loc.foodCostStatus === 'bad' ? '#f43f5e' : undefined,
                       }}
                     >
-                      {loc.foodCostPercent !== null ? `${loc.foodCostPercent.toFixed(1)}%` : '—'}
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-slate-400">{loc.laborHours7d}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-slate-400">Rs. {loc.creditExposure.toFixed(0)}</td>
-                    <td className="px-5 py-3">
-                      {loc.salesTrendPercent === null ? (
-                        <span className="text-slate-600">—</span>
-                      ) : (
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${loc.salesTrendPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {loc.salesTrendPercent >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                          Sales {loc.salesTrendPercent >= 0 ? 'up' : 'down'} {Math.abs(loc.salesTrendPercent).toFixed(0)}%
-                        </span>
-                      )}
-                    </td>
+                      {loc.foodCostPercent !== null ? `${loc.foodCostPercent.toFixed(1)}% food cost` : '—'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mt-1 text-[10.5px] text-slate-400">
+                    <span>Rs. {loc.sales7d.toFixed(0)} sales · {loc.laborHours7d}h labor</span>
+                    {loc.salesTrendPercent !== null && (
+                      <span className={`inline-flex items-center gap-1 font-bold shrink-0 ${loc.salesTrendPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {loc.salesTrendPercent >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                        {Math.abs(loc.salesTrendPercent).toFixed(0)}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tablet/desktop: full table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
+                    <th className="text-left font-semibold px-5 py-3">Location</th>
+                    <th className="text-right font-semibold px-5 py-3">Sales (7d)</th>
+                    <th className="text-right font-semibold px-5 py-3">Food cost</th>
+                    <th className="text-right font-semibold px-5 py-3">Labor hours</th>
+                    <th className="text-right font-semibold px-5 py-3">Credit owed</th>
+                    <th className="text-left font-semibold px-5 py-3">7-day trend</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-800/80">
+                  {ranked.map((loc) => (
+                    <tr key={loc.id} className="hover:bg-slate-800/30 transition">
+                      <td className="px-5 py-3 font-semibold text-slate-200">{loc.name}</td>
+                      <td className="px-5 py-3 text-right tabular-nums">Rs. {loc.sales7d.toFixed(0)}</td>
+                      <td
+                        className="px-5 py-3 text-right tabular-nums font-semibold"
+                        style={{
+                          color:
+                            loc.foodCostStatus === 'good' ? '#10b981' : loc.foodCostStatus === 'watch' ? '#f59e0b' : loc.foodCostStatus === 'bad' ? '#f43f5e' : undefined,
+                        }}
+                      >
+                        {loc.foodCostPercent !== null ? `${loc.foodCostPercent.toFixed(1)}%` : '—'}
+                      </td>
+                      <td className="px-5 py-3 text-right tabular-nums text-slate-400">{loc.laborHours7d}</td>
+                      <td className="px-5 py-3 text-right tabular-nums text-slate-400">Rs. {loc.creditExposure.toFixed(0)}</td>
+                      <td className="px-5 py-3">
+                        {loc.salesTrendPercent === null ? (
+                          <span className="text-slate-600">—</span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${loc.salesTrendPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {loc.salesTrendPercent >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                            Sales {loc.salesTrendPercent >= 0 ? 'up' : 'down'} {Math.abs(loc.salesTrendPercent).toFixed(0)}%
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

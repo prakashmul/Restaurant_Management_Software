@@ -159,7 +159,7 @@ export const ChecklistsPage: React.FC = () => {
                     {canManageTemplates && template && (
                       <button
                         onClick={() => handleDeleteTemplate(template)}
-                        className="text-slate-500 hover:text-rose-400 transition p-1"
+                        className="text-slate-500 hover:text-rose-400 transition p-2 sm:p-1"
                         title="Delete template"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -197,7 +197,7 @@ export const ChecklistsPage: React.FC = () => {
 
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative max-h-[85vh] overflow-y-auto">
             <button
               onClick={() => setIsCreateOpen(false)}
               className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 p-1.5 rounded-lg hover:bg-slate-800 transition"

@@ -353,7 +353,7 @@ export const ProcurementPage: React.FC = () => {
                               {po.status === 'draft' && (
                                 <button
                                   onClick={() => handleDeletePo(po)}
-                                  className="text-slate-500 hover:text-rose-400 transition p-1"
+                                  className="text-slate-500 hover:text-rose-400 transition p-2 sm:p-1"
                                   title="Delete draft"
                                 >
                                   <Trash2 className="w-3 h-3" />
@@ -362,7 +362,7 @@ export const ProcurementPage: React.FC = () => {
                               {NEXT_STATUS[po.status] && (
                                 <button
                                   onClick={() => handleAdvance(po)}
-                                  className="text-indigo-400 hover:text-indigo-300 transition p-1"
+                                  className="text-indigo-400 hover:text-indigo-300 transition p-2 sm:p-1"
                                   title={`Advance to ${NEXT_STATUS[po.status]}`}
                                 >
                                   <ArrowRight className="w-3.5 h-3.5" />
@@ -399,7 +399,7 @@ export const ProcurementPage: React.FC = () => {
                     <div className="text-xs font-semibold text-slate-200">{vendor.name}</div>
                     <div className="text-[10px] text-slate-500">{vendor.category}</div>
                   </div>
-                  <button onClick={() => handleDeleteVendor(vendor)} className="text-slate-500 hover:text-rose-400 transition p-1">
+                  <button onClick={() => handleDeleteVendor(vendor)} className="text-slate-500 hover:text-rose-400 transition p-2 sm:p-1">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -439,7 +439,7 @@ export const ProcurementPage: React.FC = () => {
 
       {isPoModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative max-h-[85vh] overflow-y-auto">
             <button
               onClick={() => setIsPoModalOpen(false)}
               className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 p-1.5 rounded-lg hover:bg-slate-800 transition"
@@ -480,9 +480,12 @@ export const ProcurementPage: React.FC = () => {
                   </button>
                 </div>
                 {scanNotice && <p className="text-[11px] text-emerald-400 mb-2">{scanNotice}</p>}
-                <div className="space-y-2">
+                <div className="space-y-3 sm:space-y-2">
                   {poLines.map((line, idx) => (
-                    <div key={idx} className="grid grid-cols-[1fr_70px_80px_auto] gap-2 items-center">
+                    <div
+                      key={idx}
+                      className="flex flex-col gap-2 pb-3 border-b border-slate-800/60 sm:pb-0 sm:border-0 sm:grid sm:grid-cols-[1fr_70px_80px_auto] sm:items-center last:border-0 last:pb-0"
+                    >
                       <select
                         value={line.inventoryItemId}
                         onChange={(e) => updateLine(idx, 'inventoryItemId', e.target.value)}
@@ -494,33 +497,35 @@ export const ProcurementPage: React.FC = () => {
                           </option>
                         ))}
                       </select>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={line.quantity}
-                        onChange={(e) => updateLine(idx, 'quantity', e.target.value)}
-                        placeholder="Qty"
-                        className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={line.unitCost}
-                        onChange={(e) => updateLine(idx, 'unitCost', e.target.value)}
-                        placeholder="Unit Rs."
-                        className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                      />
-                      {poLines.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setPoLines((prev) => prev.filter((_, i) => i !== idx))}
-                          className="text-slate-500 hover:text-rose-400 transition p-1.5"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <div className="flex gap-2 sm:contents">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={line.quantity}
+                          onChange={(e) => updateLine(idx, 'quantity', e.target.value)}
+                          placeholder="Qty"
+                          className="flex-1 sm:flex-none min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={line.unitCost}
+                          onChange={(e) => updateLine(idx, 'unitCost', e.target.value)}
+                          placeholder="Unit Rs."
+                          className="flex-1 sm:flex-none min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                        />
+                        {poLines.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setPoLines((prev) => prev.filter((_, i) => i !== idx))}
+                            className="text-slate-500 hover:text-rose-400 transition p-2.5 sm:p-1.5 shrink-0"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

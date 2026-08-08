@@ -33,6 +33,18 @@ function AppShell() {
   // Open modal automatically on initial load if no user session exists
   const [isLoginOpen, setIsLoginOpen] = useState<boolean>(!currentUser);
 
+  // Sidebar renders as a persistent column at lg+ and an overlay drawer
+  // below it; this only controls the drawer's open/closed state on small
+  // screens (CSS handles the split, see Sidebar.tsx).
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Close the drawer on every navigation, including programmatic redirects
+  // (e.g. the catch-all `Navigate` route) that wouldn't hit the NavLink's
+  // own onClick handler.
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
+
   // Once logged in, pick a starting location: a restricted staff member's
   // own assigned location, or the first location for everyone else. Runs
   // again after logout/login since currentLocation is cleared on both.
@@ -101,11 +113,13 @@ function AppShell() {
         currentUser={currentUser}
         onLogin={() => setIsLoginOpen(true)}
         onLogout={handleLogout}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <Header />
+        <Header onMenuClick={() => setIsSidebarOpen(true)} />
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto">

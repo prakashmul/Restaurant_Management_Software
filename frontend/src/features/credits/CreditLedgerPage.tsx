@@ -379,7 +379,7 @@ export const CreditLedgerPage = () => {
               return (
                 <div
                   key={customer.id}
-                  className="bg-slate-900 border border-slate-800/90 hover:border-amber-500/40 p-4 rounded-2xl transition-all shadow-sm hover:shadow-md flex items-center justify-between gap-2 overflow-hidden group"
+                  className="bg-slate-900 border border-slate-800/90 hover:border-amber-500/40 p-4 rounded-2xl transition-all shadow-sm hover:shadow-md flex items-center flex-wrap justify-between gap-2 group"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 shrink-0 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-center text-slate-400 group-hover:text-amber-400 transition">
@@ -448,7 +448,7 @@ export const CreditLedgerPage = () => {
                           {!isCleared && (
                             <button
                               onClick={() => handleSettleCustomerDebt(customer)}
-                              className="p-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600 text-emerald-400 hover:text-white transition flex items-center justify-center"
+                              className="p-2.5 sm:p-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600 text-emerald-400 hover:text-white transition flex items-center justify-center"
                               title="Mark Balance as Fully Paid"
                             >
                               <CheckCircle2 className="w-4 h-4" />
@@ -456,7 +456,7 @@ export const CreditLedgerPage = () => {
                           )}
                           <button
                             onClick={() => handleOpenEditModal(customer)}
-                            className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-slate-400 hover:text-amber-400 transition"
+                            className="p-2.5 sm:p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-slate-400 hover:text-amber-400 transition"
                             title="Edit Customer / Receive Partial Payment"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
@@ -467,7 +467,7 @@ export const CreditLedgerPage = () => {
                       {(activeTab === 'history' || activeTab === 'settlements') && (
                         <button
                           onClick={() => handleOpenHistoryModal(customer)}
-                          className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-slate-400 hover:text-amber-400 transition"
+                          className="p-2.5 sm:p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-slate-400 hover:text-amber-400 transition"
                           title="View Detailed Credit History"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -476,7 +476,7 @@ export const CreditLedgerPage = () => {
 
                       <button
                         onClick={() => handleDeleteCustomerCredit(customer)}
-                        className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-red-500/50 text-slate-400 hover:text-red-400 transition"
+                        className="p-2.5 sm:p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-red-500/50 text-slate-400 hover:text-red-400 transition"
                         title="Delete Credit Entry"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

@@ -421,7 +421,7 @@ export const StaffPage: React.FC = () => {
                   {canManageRoles && !selectedRole.isOwnerRole && selectedRole.userCount === 0 && (
                     <button
                       onClick={() => handleDeleteRole(selectedRole)}
-                      className="text-rose-400 hover:text-rose-300 transition p-1.5 rounded-lg hover:bg-rose-500/10"
+                      className="text-rose-400 hover:text-rose-300 transition p-2.5 sm:p-1.5 rounded-lg hover:bg-rose-500/10"
                       title="Delete role"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -547,6 +547,7 @@ export const StaffPage: React.FC = () => {
           {staff.length === 0 ? (
             <div className="p-8 text-center text-slate-500 text-sm">No staff members found.</div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
@@ -640,6 +641,7 @@ export const StaffPage: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
         </div>

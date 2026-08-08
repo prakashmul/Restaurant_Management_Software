@@ -438,7 +438,7 @@ export const InventoryPage = () => {
                             onClick={() => handleSaveThreshold(item)}
                             disabled={savingThreshold === itemId}
                             title="Save threshold"
-                            className="text-emerald-400 hover:text-emerald-300 p-1 rounded-lg hover:bg-emerald-500/10 transition disabled:opacity-40"
+                            className="text-emerald-400 hover:text-emerald-300 p-2 sm:p-1 rounded-lg hover:bg-emerald-500/10 transition disabled:opacity-40"
                           >
                             <Check className="w-3.5 h-3.5" />
                           </button>
@@ -478,7 +478,7 @@ export const InventoryPage = () => {
                         <button
                           onClick={() => handleRestock(item)}
                           disabled={!itemId}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white p-1.5 rounded-lg transition disabled:opacity-40"
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white p-2.5 sm:p-1.5 rounded-lg transition disabled:opacity-40"
                           title="Save Stock Adjustment"
                         >
                           <PlusCircle className="w-4 h-4" />
@@ -486,7 +486,7 @@ export const InventoryPage = () => {
                         <button
                           onClick={() => openWasteModal(item)}
                           disabled={!itemId}
-                          className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 p-1.5 rounded-lg transition disabled:opacity-40"
+                          className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 p-2.5 sm:p-1.5 rounded-lg transition disabled:opacity-40"
                           title="Log Waste"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -494,7 +494,7 @@ export const InventoryPage = () => {
                         <button
                           onClick={() => openPriceHistory(item)}
                           disabled={!itemId}
-                          className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 p-1.5 rounded-lg transition disabled:opacity-40"
+                          className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 p-2.5 sm:p-1.5 rounded-lg transition disabled:opacity-40"
                           title="Supplier Price History"
                         >
                           <Receipt className="w-4 h-4" />
@@ -502,7 +502,7 @@ export const InventoryPage = () => {
                         <button
                           onClick={() => openReorderModal(item)}
                           disabled={!itemId}
-                          className={`p-1.5 rounded-lg transition disabled:opacity-40 border ${
+                          className={`p-2.5 sm:p-1.5 rounded-lg transition disabled:opacity-40 border ${
                             item.preferredVendorId
                               ? 'bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/20 text-indigo-400'
                               : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'

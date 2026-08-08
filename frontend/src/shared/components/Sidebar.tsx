@@ -33,12 +33,16 @@ interface SidebarProps {
   } | null;
   onLogin?: () => void;
   onLogout?: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentUser = null,
   onLogin,
-  onLogout
+  onLogout,
+  isOpen = false,
+  onClose,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -76,7 +80,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, []);
 
   return (
-    <aside className="w-64 bg-slate-900 border-r border-slate-800 p-4 flex flex-col h-full select-none">
+    <>
+      {/* Backdrop — mobile/tablet only, dismisses the drawer on tap. The
+          sidebar itself is a persistent flex sibling at lg+, where this
+          never renders. */}
+      {isOpen && (
+        <div
+          onClick={onClose}
+          aria-hidden="true"
+          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 p-4 flex flex-col h-full select-none
+          transform transition-transform duration-200 ease-in-out
+          lg:static lg:translate-x-0 lg:z-auto lg:shrink-0
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
       {/* TOP SECTION: BRAND & NAV — scrolls independently so a long nav list never pushes the profile button off-screen */}
       <div className="flex-1 min-h-0 flex flex-col space-y-6 overflow-y-auto">
         <div className="flex items-center gap-3 px-2 shrink-0">
@@ -98,6 +119,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={item.path}
                 to={item.path}
                 end={item.end}
+                onClick={onClose}
                 className={({ isActive }) =>
                   `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
                     isActive
@@ -182,6 +204,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };

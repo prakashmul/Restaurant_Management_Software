@@ -240,7 +240,7 @@ export const TransfersPage: React.FC = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative max-h-[85vh] overflow-y-auto">
             <button
               onClick={() => setIsModalOpen(false)}
               className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 p-1.5 rounded-lg hover:bg-slate-800 transition"
@@ -274,11 +274,14 @@ export const TransfersPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">Line items</label>
-                <div className="space-y-2">
+                <div className="space-y-3 sm:space-y-2">
                   {lines.map((line, idx) => {
                     const selected = inventory.find((i) => (i._id || i.id) === line.inventoryItemId);
                     return (
-                      <div key={idx} className="grid grid-cols-[1fr_90px_auto] gap-2 items-center">
+                      <div
+                        key={idx}
+                        className="flex flex-col gap-2 pb-3 border-b border-slate-800/60 sm:pb-0 sm:border-0 sm:grid sm:grid-cols-[1fr_90px_auto] sm:items-center last:border-0 last:pb-0"
+                      >
                         <select
                           value={line.inventoryItemId}
                           onChange={(e) => updateLine(idx, 'inventoryItemId', e.target.value)}
@@ -290,25 +293,27 @@ export const TransfersPage: React.FC = () => {
                             </option>
                           ))}
                         </select>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          max={selected?.totalQuantity}
-                          value={line.quantity}
-                          onChange={(e) => updateLine(idx, 'quantity', e.target.value)}
-                          placeholder="Qty"
-                          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                        />
-                        {lines.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))}
-                            className="text-slate-500 hover:text-rose-400 transition p-1.5"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        <div className="flex gap-2 sm:contents">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            max={selected?.totalQuantity}
+                            value={line.quantity}
+                            onChange={(e) => updateLine(idx, 'quantity', e.target.value)}
+                            placeholder="Qty"
+                            className="flex-1 sm:flex-none min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                          />
+                          {lines.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))}
+                              className="text-slate-500 hover:text-rose-400 transition p-2.5 sm:p-1.5 shrink-0"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

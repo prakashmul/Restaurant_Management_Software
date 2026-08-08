@@ -190,27 +190,17 @@ export const RecipeCostingPage: React.FC = () => {
             <div className="px-5 py-4 border-b border-slate-800">
               <h3 className="text-xs font-bold">Dish-level cost breakdown</h3>
             </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
-                  <th className="text-left font-semibold px-5 py-3">Dish</th>
-                  <th className="text-right font-semibold px-5 py-3">Price</th>
-                  <th className="text-right font-semibold px-5 py-3">Ingredient cost</th>
-                  <th className="text-right font-semibold px-5 py-3">Food cost %</th>
-                  <th className="text-right font-semibold px-5 py-3">Units sold</th>
-                  <th className="text-left font-semibold px-5 py-3">Class</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/80">
-                {sortedDishes.map((dish) => (
-                  <tr key={dish.id} className="hover:bg-slate-800/30 transition">
-                    <td className="px-5 py-3 font-semibold text-slate-200">{dish.name}</td>
-                    <td className="px-5 py-3 text-right tabular-nums">Rs. {dish.price.toFixed(0)}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-slate-400">
-                      {dish.ingredientCost !== null ? `Rs. ${dish.ingredientCost.toFixed(0)}` : '—'}
-                    </td>
-                    <td
-                      className="px-5 py-3 text-right tabular-nums font-semibold"
+
+            {/* Mobile: one card per dish */}
+            <div className="sm:hidden divide-y divide-slate-800/80">
+              {sortedDishes.map((dish) => (
+                <div key={dish.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-200 truncate">{dish.name}</span>
+                    <span className="text-xs font-bold tabular-nums shrink-0">Rs. {dish.price.toFixed(0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mt-1 text-[10.5px] text-slate-400">
+                    <span
                       style={{
                         color:
                           dish.foodCostPercent === null
@@ -222,22 +212,69 @@ export const RecipeCostingPage: React.FC = () => {
                             : '#f43f5e',
                       }}
                     >
-                      {dish.foodCostPercent !== null ? `${dish.foodCostPercent.toFixed(1)}%` : 'No recipe cost data'}
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-slate-400">{dish.unitsSold}</td>
-                    <td className="px-5 py-3">
-                      {dish.classification ? (
-                        <span className={`inline-flex px-2 py-0.5 rounded-md border text-[10px] font-semibold ${CLASS_PILL_CLASSES[dish.classification]}`}>
-                          {CLASS_META[dish.classification].label}
-                        </span>
-                      ) : (
-                        <span className="text-slate-600">—</span>
-                      )}
-                    </td>
+                      {dish.foodCostPercent !== null ? `${dish.foodCostPercent.toFixed(1)}% food cost` : 'No cost data'} · {dish.unitsSold} sold
+                    </span>
+                    {dish.classification && (
+                      <span className={`shrink-0 inline-flex px-1.5 py-0.5 rounded-md border text-[9px] font-semibold ${CLASS_PILL_CLASSES[dish.classification]}`}>
+                        {CLASS_META[dish.classification].label}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tablet/desktop: full table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
+                    <th className="text-left font-semibold px-5 py-3">Dish</th>
+                    <th className="text-right font-semibold px-5 py-3">Price</th>
+                    <th className="text-right font-semibold px-5 py-3">Ingredient cost</th>
+                    <th className="text-right font-semibold px-5 py-3">Food cost %</th>
+                    <th className="text-right font-semibold px-5 py-3">Units sold</th>
+                    <th className="text-left font-semibold px-5 py-3">Class</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-800/80">
+                  {sortedDishes.map((dish) => (
+                    <tr key={dish.id} className="hover:bg-slate-800/30 transition">
+                      <td className="px-5 py-3 font-semibold text-slate-200">{dish.name}</td>
+                      <td className="px-5 py-3 text-right tabular-nums">Rs. {dish.price.toFixed(0)}</td>
+                      <td className="px-5 py-3 text-right tabular-nums text-slate-400">
+                        {dish.ingredientCost !== null ? `Rs. ${dish.ingredientCost.toFixed(0)}` : '—'}
+                      </td>
+                      <td
+                        className="px-5 py-3 text-right tabular-nums font-semibold"
+                        style={{
+                          color:
+                            dish.foodCostPercent === null
+                              ? undefined
+                              : dish.foodCostPercent <= 30
+                              ? '#10b981'
+                              : dish.foodCostPercent <= 38
+                              ? '#f59e0b'
+                              : '#f43f5e',
+                        }}
+                      >
+                        {dish.foodCostPercent !== null ? `${dish.foodCostPercent.toFixed(1)}%` : 'No recipe cost data'}
+                      </td>
+                      <td className="px-5 py-3 text-right tabular-nums text-slate-400">{dish.unitsSold}</td>
+                      <td className="px-5 py-3">
+                        {dish.classification ? (
+                          <span className={`inline-flex px-2 py-0.5 rounded-md border text-[10px] font-semibold ${CLASS_PILL_CLASSES[dish.classification]}`}>
+                            {CLASS_META[dish.classification].label}
+                          </span>
+                        ) : (
+                          <span className="text-slate-600">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">

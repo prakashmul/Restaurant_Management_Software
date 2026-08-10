@@ -151,8 +151,8 @@ export const HeadOfficePage: React.FC = () => {
               <h3 className="text-xs font-bold">Location ranking — sorted by food cost %, worst first</h3>
             </div>
 
-            {/* Mobile: one card per location */}
-            <div className="sm:hidden divide-y divide-slate-800/80">
+            {/* Mobile/tablet: one card per location */}
+            <div className="lg:hidden divide-y divide-slate-800/80">
               {ranked.map((loc) => (
                 <div key={loc.id} className="px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
@@ -180,8 +180,8 @@ export const HeadOfficePage: React.FC = () => {
               ))}
             </div>
 
-            {/* Tablet/desktop: full table */}
-            <div className="hidden sm:block overflow-x-auto">
+            {/* Desktop: full table */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">

@@ -191,8 +191,8 @@ export const RecipeCostingPage: React.FC = () => {
               <h3 className="text-xs font-bold">Dish-level cost breakdown</h3>
             </div>
 
-            {/* Mobile: one card per dish */}
-            <div className="sm:hidden divide-y divide-slate-800/80">
+            {/* Mobile/tablet: one card per dish */}
+            <div className="lg:hidden divide-y divide-slate-800/80">
               {sortedDishes.map((dish) => (
                 <div key={dish.id} className="px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
@@ -224,8 +224,8 @@ export const RecipeCostingPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Tablet/desktop: full table */}
-            <div className="hidden sm:block overflow-x-auto">
+            {/* Desktop: full table */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">

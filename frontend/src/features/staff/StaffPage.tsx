@@ -547,7 +547,86 @@ export const StaffPage: React.FC = () => {
           {staff.length === 0 ? (
             <div className="p-8 text-center text-slate-500 text-sm">No staff members found.</div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Mobile/tablet: one card per staff member */}
+            <div className="lg:hidden divide-y divide-slate-800/80">
+              {staff.map((member) => (
+                <div key={member.id} className="p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-200 truncate flex items-center gap-1.5">
+                        {member.name}
+                        {isSelf(member) && <span className="text-[10px] text-indigo-400 font-medium shrink-0">(You)</span>}
+                      </div>
+                      <div className="text-[10.5px] text-slate-400 truncate">{member.email}</div>
+                    </div>
+                    <span
+                      className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                        member.status === 'active'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      }`}
+                    >
+                      {member.status}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center flex-wrap gap-2 mt-2.5">
+                    <span className="text-[10px] text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">
+                      {locationName(member.locationId)}
+                    </span>
+                    {canManageStaff && !isSelf(member) && member.role !== 'Owner' ? (
+                      <select
+                        value={member.roleId}
+                        onChange={(e) => handleStaffRoleChange(member, e.target.value)}
+                        className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-slate-300 font-medium focus:outline-none focus:border-indigo-500 cursor-pointer"
+                      >
+                        {roles.map((r) => (
+                          <option key={r._id} value={r._id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[10px] font-medium">
+                        <ShieldCheck className="w-2.5 h-2.5" /> {member.role}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 mt-2.5">
+                    {canManageStaff ? (
+                      <div className="relative w-24">
+                        <DollarSign className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                          key={`${member.id}-${member.hourlyRate}-mobile`}
+                          type="number"
+                          min={0}
+                          step="0.5"
+                          defaultValue={member.hourlyRate}
+                          disabled={savingRateId === member.id}
+                          onBlur={(e) => handleRateChange(member, e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-6 pr-2 py-1.5 text-xs text-slate-300 font-medium focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-xs tabular-nums text-slate-400">Rs. {member.hourlyRate.toFixed(2)}/hr</span>
+                    )}
+                    {canManageStaff && !isSelf(member) && (
+                      <button
+                        onClick={() => handleRemove(member)}
+                        className="text-rose-400 hover:text-rose-300 transition inline-flex items-center gap-1 text-[11px] font-semibold p-2 -m-2"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop: full table */}
+            <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
@@ -642,6 +721,7 @@ export const StaffPage: React.FC = () => {
               </tbody>
             </table>
             </div>
+            </>
           )}
         </div>
         </div>

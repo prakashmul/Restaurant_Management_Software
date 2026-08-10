@@ -140,8 +140,8 @@ export const CustomersPage: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* Mobile: one card per customer */}
-            <div className="sm:hidden divide-y divide-slate-800/80">
+            {/* Mobile/tablet: one card per customer */}
+            <div className="lg:hidden divide-y divide-slate-800/80">
               {filtered.map((c) => (
                 <button
                   key={c._id}
@@ -166,8 +166,8 @@ export const CustomersPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Tablet/desktop: full table */}
-            <div className="hidden sm:block overflow-x-auto">
+            {/* Desktop: full table */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">

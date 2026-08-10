@@ -170,7 +170,54 @@ export const SchedulingPage: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden overflow-x-auto">
+          {/* Mobile/tablet: one card per staff member, shifts as tappable chips — the
+              staff x day matrix below is too wide to fit without horizontal scrolling. */}
+          <div className="lg:hidden space-y-3">
+            {staff.map((member) => {
+              const weekShifts = weekDays.map((d, i) => ({ i, dateStr: toDateStr(d), shifts: shiftFor(member.id, toDateStr(d)) }));
+              const hasAnyShift = weekShifts.some((d) => d.shifts.length > 0);
+              return (
+                <div key={member.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div>
+                      <div className="font-semibold text-sm text-slate-200">{member.name}</div>
+                      <div className="text-[10px] text-slate-500">{member.role}</div>
+                    </div>
+                    {canManage && (
+                      <button
+                        onClick={() => openAddModal(member.id)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition px-2 py-1.5 -m-1.5"
+                      >
+                        <Plus className="w-3 h-3" /> Add
+                      </button>
+                    )}
+                  </div>
+                  {!hasAnyShift ? (
+                    <p className="text-xs text-slate-500">No shifts this week.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {weekShifts.map(({ i, shifts: dayShifts }) =>
+                        dayShifts.map((shift) => (
+                          <button
+                            key={shift._id}
+                            onClick={() => handleDeleteShift(shift)}
+                            disabled={!canManage}
+                            title={canManage ? 'Tap to remove' : undefined}
+                            className="text-[10px] font-semibold px-2.5 py-1.5 rounded-lg bg-indigo-500/15 text-indigo-300 hover:bg-rose-500/15 hover:text-rose-300 transition"
+                          >
+                            {DAY_LABELS[i]} {formatTimeLabel(shift.startTime)}–{formatTimeLabel(shift.endTime)}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop: full weekly grid */}
+          <div className="hidden lg:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden overflow-x-auto">
             <table className="w-full text-xs min-w-[820px]">
               <thead>
                 <tr className="border-b border-slate-800">
@@ -226,7 +273,7 @@ export const SchedulingPage: React.FC = () => {
           </div>
 
           {variance && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4">
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
                 <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Planned hours</div>
                 <div className="text-xl font-bold mt-1 tabular-nums">{formatHours(variance.totalPlannedSeconds)}</div>

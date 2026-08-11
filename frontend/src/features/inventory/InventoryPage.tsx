@@ -400,7 +400,7 @@ export const InventoryPage = () => {
                     </td>
                     <td className="p-4">
                       <span
-                        className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        className={`inline-block whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-semibold ${
                           lowStock
                             ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                             : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'

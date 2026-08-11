@@ -273,8 +273,8 @@ export const CreditLedgerPage = () => {
       </div>
 
       {/* TABS & CONTROLS */}
-      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800">
-        <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+      <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800">
+        <div className="flex items-center flex-wrap gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
           {(['active', 'history', 'settlements'] as const).map((tab) => (
             <button
               key={tab}
@@ -294,8 +294,8 @@ export const CreditLedgerPage = () => {
         </div>
 
         {/* Search Bar & Export Button */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 md:w-80">
+        <div className="flex items-center flex-wrap gap-3">
+          <div className="relative flex-1 lg:w-80">
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               type="text"

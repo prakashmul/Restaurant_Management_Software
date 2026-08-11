@@ -1,13 +1,23 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { 
-  MapPin, Clock, History, CheckCircle2, XCircle, Coffee, 
-  Play, Printer, Calendar, DollarSign, TrendingUp, ShoppingBag, CreditCard 
+import {
+  MapPin, Clock, History, CheckCircle2, XCircle, Coffee,
+  Play, Printer, Calendar, DollarSign, TrendingUp, ShoppingBag, CreditCard,
+  PiggyBank, Wallet, AlertTriangle
 } from 'lucide-react';
 import { posApi } from '../../api/posApi';
+import type { DashboardSummary } from '../../api/posApi';
 import { useAuth } from '../../auth/AuthContext';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 import { LowStockWidget } from './LowStockWidget';
 import { SalesTrendChart } from './SalesTrendChart';
+import { toLocalRangeStartISO, toLocalRangeEndISO } from '../../lib/dateRange';
+
+function formatLocalYYYYMMDD(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 const STORAGE_KEY = 'pos_active_shift_session';
 
@@ -88,7 +98,10 @@ export const DashboardPage: React.FC = () => {
   const [startDateFilter, setStartDateFilter] = useState('');
   const [endDateFilter, setEndDateFilter] = useState('');
 
-  // Dashboard Stats State
+  // Dashboard Stats State — orders (unfiltered, last 14 days worth is all
+  // SalesTrendChart needs) stay separate from the Restaurant Overview's own
+  // date-ranged summary below, which is computed server-side so it can net
+  // out refunds/discounts correctly and cost dishes per-location.
   const [orders, setOrders] = useState<OrderRecord[]>([]);
 
   const fetchDashboardData = async () => {
@@ -115,41 +128,38 @@ export const DashboardPage: React.FC = () => {
     if (isOwner) fetchDashboardData();
   });
 
-  // Compute key KPI metrics
-  const dashboardStats = useMemo(() => {
-    let grossSales = 0;
-    let netPaidSales = 0;
-    let creditOwed = 0;
-    let totalOrdersCount = orders.length;
+  // Restaurant Overview date range — defaults to today, independent of the
+  // Attendance History filter further down the page.
+  const [overviewStartDate, setOverviewStartDate] = useState(formatLocalYYYYMMDD(new Date()));
+  const [overviewEndDate, setOverviewEndDate] = useState(formatLocalYYYYMMDD(new Date()));
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
 
-    orders.forEach((order) => {
-      if (order.status === 'cancelled') return;
+  const fetchSummary = async () => {
+    try {
+      const data = await posApi.getDashboardSummary({
+        startDate: toLocalRangeStartISO(overviewStartDate),
+        endDate: toLocalRangeEndISO(overviewEndDate),
+      });
+      setSummary(data);
+    } catch (err) {
+      console.error('Failed to fetch dashboard summary', err);
+    }
+  };
 
-      grossSales += order.total || 0;
-      const refunded = (order.refundHistory || []).reduce((sum, r) => sum + (r.amount || 0), 0);
+  useEffect(() => {
+    if (isOwner) fetchSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner, currentLocation?.id, overviewStartDate, overviewEndDate]);
 
-      if (order.status === 'paid') {
-        netPaidSales += Math.max(0, (order.total || 0) - refunded);
-      } else if (order.status === 'settled' || order.status === 'credit' || order.status === 'unsettled') {
-        // Count actual payments received against credit orders (partial or
-        // full), not just orders that reached full settlement, so a partial
-        // credit payment is reflected here immediately.
-        const creditReceived = (order.paymentHistory || []).reduce((sum, p) => sum + (p.amount || 0), 0);
-        netPaidSales += Math.max(0, creditReceived - refunded);
-      }
+  useRealtimeRefresh(['order', 'expense'], () => {
+    if (isOwner) fetchSummary();
+  });
 
-      if (order.status === 'credit' || order.status === 'unsettled') {
-        creditOwed += order.remainingBalance ?? order.total ?? 0;
-      }
-    });
-
-    return {
-      grossSales,
-      netPaidSales,
-      creditOwed,
-      totalOrdersCount,
-    };
-  }, [orders]);
+  const setOverviewToToday = () => {
+    const today = formatLocalYYYYMMDD(new Date());
+    setOverviewStartDate(today);
+    setOverviewEndDate(today);
+  };
 
   useEffect(() => {
     activeSessionStartRef.current = activeSessionStart;
@@ -564,24 +574,47 @@ export const DashboardPage: React.FC = () => {
       {/* ========================================================= */}
       {isOwner && (
         <div className="print:hidden space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div>
               <h1 className="text-xl font-bold text-white flex items-center gap-2">
                 <TrendingUp className="w-6 h-6 text-indigo-400" /> Restaurant Overview
               </h1>
-              <p className="text-xs text-slate-400">Real-time performance summary and metrics</p>
+              <p className="text-xs text-slate-400">Performance summary for the selected date range</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl text-xs">
+              <Calendar className="w-4 h-4 text-indigo-400 shrink-0" />
+              <input
+                type="date"
+                value={overviewStartDate}
+                onChange={(e) => setOverviewStartDate(e.target.value)}
+                className="bg-transparent text-white outline-none cursor-pointer"
+              />
+              <span className="text-slate-500">to</span>
+              <input
+                type="date"
+                value={overviewEndDate}
+                onChange={(e) => setOverviewEndDate(e.target.value)}
+                className="bg-transparent text-white outline-none cursor-pointer"
+              />
+              <button
+                onClick={setOverviewToToday}
+                className="ml-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition"
+              >
+                Today
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Card 1: Gross Sales */}
             <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-slate-400">Gross Sales</p>
                 <h3 className="text-2xl font-bold text-white mt-1">
-                  {currency} {dashboardStats.grossSales.toLocaleString()}
+                  {currency} {(summary?.grossSales || 0).toLocaleString()}
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">Total menu items billed</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Cash + credit payments received</p>
               </div>
               <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl">
                 <DollarSign className="w-6 h-6" />
@@ -593,9 +626,9 @@ export const DashboardPage: React.FC = () => {
               <div>
                 <p className="text-xs font-medium text-slate-400">Paid Revenue</p>
                 <h3 className="text-2xl font-bold text-emerald-400 mt-1">
-                  {currency} {dashboardStats.netPaidSales.toLocaleString()}
+                  {currency} {(summary?.netPaidSales || 0).toLocaleString()}
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">Fully collected payments</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Direct cash/card sales only</p>
               </div>
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl">
                 <TrendingUp className="w-6 h-6" />
@@ -607,7 +640,7 @@ export const DashboardPage: React.FC = () => {
               <div>
                 <p className="text-xs font-medium text-slate-400">Total Orders</p>
                 <h3 className="text-2xl font-bold text-white mt-1">
-                  {dashboardStats.totalOrdersCount}
+                  {summary?.totalOrdersCount || 0}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">Completed & active orders</p>
               </div>
@@ -621,12 +654,49 @@ export const DashboardPage: React.FC = () => {
               <div>
                 <p className="text-xs font-medium text-slate-400">Pending Credit Owed</p>
                 <h3 className="text-2xl font-bold text-amber-400 mt-1">
-                  {currency} {dashboardStats.creditOwed.toLocaleString()}
+                  {currency} {(summary?.creditOwed || 0).toLocaleString()}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">Customer ledger balance</p>
               </div>
               <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl">
                 <CreditCard className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Card 5: Gross Profit */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-400 flex items-center gap-1">
+                  Gross Profit
+                  {summary?.dishesMissingCostData && (
+                    <span title="Some sold dishes have no recipe cost set, so this may be understated.">
+                      <AlertTriangle className="w-3 h-3 text-amber-400" />
+                    </span>
+                  )}
+                </p>
+                <h3 className="text-2xl font-bold text-teal-400 mt-1">
+                  {currency} {(summary?.grossProfit || 0).toLocaleString()}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">Revenue minus ingredient cost</p>
+              </div>
+              <div className="p-3 bg-teal-500/10 border border-teal-500/20 text-teal-400 rounded-xl">
+                <PiggyBank className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Card 6: Net Profit */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-400">Net Profit</p>
+                <h3 className={`text-2xl font-bold mt-1 ${(summary?.netProfit || 0) >= 0 ? 'text-violet-400' : 'text-rose-400'}`}>
+                  {currency} {(summary?.netProfit || 0).toLocaleString()}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Gross profit minus {currency} {(summary?.totalExpenses || 0).toLocaleString()} expenses
+                </p>
+              </div>
+              <div className="p-3 bg-violet-500/10 border border-violet-500/20 text-violet-400 rounded-xl">
+                <Wallet className="w-6 h-6" />
               </div>
             </div>
           </div>

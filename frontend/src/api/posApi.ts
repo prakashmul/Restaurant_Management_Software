@@ -274,6 +274,29 @@ export interface CustomerDetail {
   orders: Order[];
 }
 
+export type ExpenseCategory = 'staff_salary' | 'rent' | 'electricity' | 'water' | 'miscellaneous' | 'other';
+
+export interface Expense {
+  _id: string;
+  category: ExpenseCategory;
+  amount: number;
+  date: string;
+  note: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface DashboardSummary {
+  grossSales: number;
+  netPaidSales: number;
+  creditOwed: number;
+  totalOrdersCount: number;
+  grossProfit: number;
+  totalExpenses: number;
+  netProfit: number;
+  dishesMissingCostData: boolean;
+}
+
 export interface Reservation {
   _id: string;
   type: 'reservation' | 'waitlist';
@@ -519,12 +542,13 @@ export const posApi = {
   restockItem: (
     id: any,
     quantity: number,
-    meta?: { performedBy?: string; description?: string }
+    meta?: { performedBy?: string; description?: string; unitCost?: number }
   ) =>
     API.patch<InventoryItem>(`/inventory/${cleanId(id)}/restock`, {
       quantity,
       performedBy: meta?.performedBy,
       description: meta?.description,
+      unitCost: meta?.unitCost,
     }).then((r) => r.data),
 
   logWaste: (
@@ -758,6 +782,22 @@ export const posApi = {
 
   resetPassword: (token: string, password: string) =>
     API.post<{ message: string }>('/auth/reset-password', { token, password }).then((r) => r.data),
+
+  // Expenses
+  getExpenses: (filters: { startDate?: string; endDate?: string } = {}) =>
+    API.get<Expense[]>('/expenses', { params: filters }).then((r) => r.data),
+
+  createExpense: (data: { category: ExpenseCategory; amount: number; date: string; note?: string }) =>
+    API.post<Expense>('/expenses', data).then((r) => r.data),
+
+  updateExpense: (id: string, data: Partial<{ category: ExpenseCategory; amount: number; date: string; note: string }>) =>
+    API.patch<Expense>(`/expenses/${id}`, data).then((r) => r.data),
+
+  deleteExpense: (id: string) => API.delete(`/expenses/${id}`).then((r) => r.data),
+
+  // Dashboard
+  getDashboardSummary: (filters: { startDate?: string; endDate?: string } = {}) =>
+    API.get<DashboardSummary>('/dashboard/summary', { params: filters }).then((r) => r.data),
 };
 
 interface AuthRestaurantShape {

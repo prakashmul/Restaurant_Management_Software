@@ -19,6 +19,7 @@ import { HeadOfficePage } from '../features/head-office/HeadOfficePage';
 import { TransfersPage } from '../features/transfers/TransfersPage';
 import { CustomersPage } from '../features/customers/CustomersPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
+import { ExpensesPage } from '../features/expenses/ExpensesPage';
 import { LoginModal } from '../auth/LoginModal';
 import { ResetPasswordPage } from '../auth/ResetPasswordPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
@@ -159,6 +160,7 @@ function AppShell() {
             <Route path="/procurement" element={<PageGuard path="/procurement"><ProcurementPage /></PageGuard>} />
             <Route path="/transfers" element={<PageGuard path="/transfers"><TransfersPage /></PageGuard>} />
             <Route path="/audit-log" element={<PageGuard path="/audit-log"><AuditLogPage /></PageGuard>} />
+            <Route path="/expenses" element={<PageGuard path="/expenses"><ExpensesPage /></PageGuard>} />
             <Route path="/locations" element={<PageGuard path="/locations"><LocationsPage /></PageGuard>} />
             <Route path="/head-office" element={<PageGuard path="/head-office"><HeadOfficePage /></PageGuard>} />
             <Route path="/customers" element={<PageGuard path="/customers"><CustomersPage /></PageGuard>} />

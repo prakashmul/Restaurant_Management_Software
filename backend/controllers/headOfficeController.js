@@ -1,22 +1,13 @@
 import Location from '../models/Location.js';
 import MenuItem from '../models/MenuItem.js';
 import Inventory from '../models/Inventory.js';
+import Stock from '../models/Stock.js';
 import Order from '../models/Order.js';
 import Attendance from '../models/Attendance.js';
+import { computeIngredientCost } from '../utils/ingredientCost.js';
 
 const SOLD_STATUSES = ['paid', 'credit', 'unsettled', 'settled'];
 const OUTSTANDING_STATUSES = ['credit', 'unsettled'];
-
-function computeIngredientCost(menuItem, inventoryCostById) {
-  if (!Array.isArray(menuItem.recipe) || menuItem.recipe.length === 0) return null;
-  let cost = 0;
-  for (const ingredient of menuItem.recipe) {
-    const costPerUnit = inventoryCostById.get(ingredient.inventoryItemId?.toString());
-    if (costPerUnit === undefined) return null;
-    cost += ingredient.quantityPerPortion * costPerUnit;
-  }
-  return cost;
-}
 
 function durationToSeconds(duration) {
   if (!duration) return 0;
@@ -46,20 +37,36 @@ export async function getSummary(req, res) {
     const prev7Start = new Date(todayStart.getTime() - 13 * 24 * 60 * 60 * 1000);
     const last30Start = new Date(todayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
 
-    const [locations, menuItems, inventoryItems] = await Promise.all([
+    const [locations, menuItems, inventoryItems, stocks] = await Promise.all([
       Location.find({ restaurantId }).sort({ createdAt: 1 }),
       MenuItem.find({ restaurantId }),
       Inventory.find({ restaurantId }),
+      Stock.find({ restaurantId }).select('locationId inventoryItemId costPerUnit'),
     ]);
 
     if (locations.length === 0) {
       return res.json({ locations: [] });
     }
 
-    const inventoryCostById = new Map(inventoryItems.map((i) => [i._id.toString(), i.costPerUnit]));
-    const ingredientCostByMenuItemId = new Map(
-      menuItems.map((m) => [m._id.toString(), computeIngredientCost(m, inventoryCostById)])
-    );
+    // Cost is tracked per location now (weighted-average costing), so food
+    // cost % can genuinely differ branch to branch — this used to be one
+    // global cost map reused for every location, which silently hid that.
+    // Inventory.costPerUnit is the fallback for a location with no purchase
+    // history yet; per-location Stock.costPerUnit overrides it where present.
+    const fallbackCostById = new Map(inventoryItems.map((i) => [i._id.toString(), i.costPerUnit]));
+    const costOverridesByLocation = new Map(); // locationId -> Map(inventoryItemId -> costPerUnit)
+    for (const stock of stocks) {
+      if (stock.costPerUnit == null) continue;
+      const locId = stock.locationId.toString();
+      if (!costOverridesByLocation.has(locId)) costOverridesByLocation.set(locId, new Map());
+      costOverridesByLocation.get(locId).set(stock.inventoryItemId.toString(), stock.costPerUnit);
+    }
+    function ingredientCostMapForLocation(locId) {
+      const inventoryCostById = new Map(fallbackCostById);
+      const overrides = costOverridesByLocation.get(locId);
+      if (overrides) for (const [itemId, cost] of overrides) inventoryCostById.set(itemId, cost);
+      return new Map(menuItems.map((m) => [m._id.toString(), computeIngredientCost(m, inventoryCostById)]));
+    }
 
     const [orders, attendanceRecords] = await Promise.all([
       Order.find(
@@ -101,6 +108,7 @@ export async function getSummary(req, res) {
         return { date: dayStart.toISOString().slice(0, 10), total };
       });
 
+      const ingredientCostByMenuItemId = ingredientCostMapForLocation(locId);
       let ingredientCostTotal = 0;
       let hasCostData = false;
       for (const order of last7Orders) {

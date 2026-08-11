@@ -103,6 +103,10 @@ export const restockSchema = z
   .object({
     quantity: z.coerce.number().optional(),
     addQuantity: z.coerce.number().optional(),
+    // Optional — a priced restock (an actual purchase) recomputes this
+    // location's weighted-average cost; omitted means "just adjusting the
+    // count," e.g. a stock-take correction, and leaves cost untouched.
+    unitCost: z.coerce.number().min(0).optional(),
     performedBy: z.string().trim().optional(),
     description: z.string().trim().optional(),
   })
@@ -320,4 +324,20 @@ export const attendanceSchema = z.object({
   checkOutTime: z.string().trim().nullable().optional(),
   duration: z.string().trim().optional().default('00:00:00'),
   status: z.enum(['Completed', 'Auto-Checked Out', 'Active']).optional().default('Active'),
+});
+
+const EXPENSE_CATEGORIES = ['staff_salary', 'rent', 'electricity', 'water', 'miscellaneous', 'other'];
+
+export const createExpenseSchema = z.object({
+  category: z.enum(EXPENSE_CATEGORIES, { errorMap: () => ({ message: 'Select a valid expense category.' }) }),
+  amount: z.coerce.number().positive('Amount must be greater than 0.'),
+  date: z.string().regex(DATE_PATTERN, 'Date must be in YYYY-MM-DD format.'),
+  note: z.string().trim().optional(),
+});
+
+export const updateExpenseSchema = z.object({
+  category: z.enum(EXPENSE_CATEGORIES).optional(),
+  amount: z.coerce.number().positive('Amount must be greater than 0.').optional(),
+  date: z.string().regex(DATE_PATTERN, 'Date must be in YYYY-MM-DD format.').optional(),
+  note: z.string().trim().optional(),
 });

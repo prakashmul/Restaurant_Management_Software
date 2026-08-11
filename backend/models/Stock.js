@@ -9,6 +9,13 @@ const stockSchema = new mongoose.Schema(
     locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', required: true },
     inventoryItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory', required: true },
     totalQuantity: { type: Number, required: true, default: 0 },
+    // This location's own weighted-average cost for the ingredient — moves
+    // toward whatever price a new priced receipt (PO or manual restock) came
+    // in at, weighted by how much was already on hand here. null = this
+    // location has never received a priced batch of this ingredient yet;
+    // callers fall back to Inventory.costPerUnit in that case. Quantity-only
+    // movements (sales, waste, refunds, unpriced restocks) never touch this.
+    costPerUnit: { type: Number, default: null },
   },
   { timestamps: true }
 );

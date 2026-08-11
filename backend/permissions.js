@@ -29,6 +29,7 @@ export const PERMISSION_SECTIONS = [
       { key: 'page.locations', label: 'Locations' },
       { key: 'page.auditlog', label: 'Audit Log' },
       { key: 'page.settings', label: 'Settings' },
+      { key: 'page.expenses', label: 'Expenses' },
     ],
   },
   {
@@ -110,6 +111,14 @@ export const PERMISSION_SECTIONS = [
     ],
   },
   {
+    key: 'expenses',
+    label: 'Expenses',
+    permissions: [
+      { key: 'expenses.view', label: 'View operating expenses' },
+      { key: 'expenses.manage', label: 'Add, edit & delete operating expenses' },
+    ],
+  },
+  {
     key: 'settings',
     label: 'Organization Settings',
     permissions: [
@@ -131,7 +140,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   Owner: [...ALL_PERMISSIONS],
   Manager: [
     'page.pos', 'page.kitchen', 'page.inventory', 'page.orders', 'page.credits', 'page.customers',
-    'page.reservations', 'page.recipecosting', 'page.scheduling', 'page.procurement', 'page.transfers', 'page.staff',
+    'page.reservations', 'page.recipecosting', 'page.scheduling', 'page.procurement', 'page.transfers', 'page.staff', 'page.expenses',
     'dash', 'tables', 'staff.view', 'customers',
     'orders.view', 'orders.edit', 'orders.checkout', 'orders.void', 'orders.discount', 'orders.tip', 'orders.credit', 'orders.refund',
     'menu.view', 'menu.edit', 'stock.view', 'stock.edit', 'stock.history',
@@ -139,7 +148,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'procurement.view', 'procurement.manage', 'transfers.view', 'transfers.manage',
     'scheduling.view', 'scheduling.manage', 'checklists.manage', 'recipecosting.view',
     'reservations.view', 'reservations.manage',
-    'settings.staff',
+    'settings.staff', 'expenses.view', 'expenses.manage',
   ],
   Cashier: [
     'page.pos', 'page.kitchen', 'page.inventory', 'page.orders', 'page.credits', 'page.customers',

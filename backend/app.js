@@ -26,6 +26,8 @@ import transfersRoutes from './routes/transfersRoutes.js';
 import customersRoutes from './routes/customersRoutes.js';
 import restaurantRoutes from './routes/restaurantRoutes.js';
 import reservationsRoutes from './routes/reservationsRoutes.js';
+import expensesRoutes from './routes/expensesRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
 
 // Builds the Express app with no side effects — no DB connection, no
 // listen() — so it can be mounted by server.js for real traffic or
@@ -88,6 +90,8 @@ export function createApp({ allowedOrigins }) {
   app.use('/api/customers', customersRoutes);
   app.use('/api/restaurant', restaurantRoutes);
   app.use('/api/reservations', reservationsRoutes);
+  app.use('/api/expenses', expensesRoutes);
+  app.use('/api/dashboard', dashboardRoutes);
 
   // --- 404 FOR UNMATCHED ROUTES ---
   app.use((req, res) => {

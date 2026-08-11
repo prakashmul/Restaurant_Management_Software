@@ -9,6 +9,7 @@ import { migrateToMultiTenant } from './services/tenantMigrationService.js';
 import { migrateToLocations } from './services/locationMigrationService.js';
 import { migrateLocationCurrency } from './services/locationCurrencyMigrationService.js';
 import { migrateToLocationStock } from './services/inventoryStockMigrationService.js';
+import { migrateStockCostPerUnit } from './services/stockCostMigrationService.js';
 import { migrateToRoles, syncBuiltInRolePermissions, migrateCustomRolePageAccess } from './services/roleMigrationService.js';
 import { migrateOrdersToCustomers } from './services/customerService.js';
 import { checkLowStockAndAlert } from './services/lowStockAlertService.js';
@@ -44,6 +45,7 @@ mongoose
     await migrateToLocations();
     await migrateLocationCurrency();
     await migrateToLocationStock();
+    await migrateStockCostPerUnit();
     await migrateToRoles();
     await syncBuiltInRolePermissions();
     await migrateCustomRolePageAccess();

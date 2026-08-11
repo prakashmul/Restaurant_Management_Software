@@ -2,13 +2,13 @@ import mongoose from 'mongoose';
 import Vendor from '../models/Vendor.js';
 import PurchaseOrder from '../models/PurchaseOrder.js';
 import Inventory from '../models/Inventory.js';
-import Stock from '../models/Stock.js';
 import StockHistory from '../models/StockHistory.js';
 import User from '../models/User.js';
 import { emitChange } from '../realtime/socket.js';
 import { logAudit } from '../services/auditService.js';
 import { attachStockQuantities } from './inventoryController.js';
 import { getCurrencySymbol } from '../utils/currency.js';
+import { receiveStockAtCost } from '../services/stockService.js';
 
 const ALLOWED_TRANSITIONS = {
   draft: ['sent'],
@@ -204,11 +204,18 @@ export async function updatePurchaseOrderStatus(req, res) {
           const invDoc = await Inventory.findOne({ _id: item.inventoryItemId, restaurantId }).session(session);
           if (!invDoc) continue; // ingredient may have been deleted since the PO was created
 
-          await Stock.findOneAndUpdate(
-            { restaurantId, locationId: po.locationId, inventoryItemId: invDoc._id },
-            { $inc: { totalQuantity: item.quantity } },
-            { upsert: true, session }
-          );
+          // A received PO is a real priced purchase — recompute this
+          // location's weighted-average cost from what was actually paid,
+          // the same as a priced manual restock does.
+          await receiveStockAtCost({
+            restaurantId,
+            locationId: po.locationId,
+            inventoryItemId: invDoc._id,
+            quantity: item.quantity,
+            unitCost: item.unitCost,
+            fallbackCost: invDoc.costPerUnit,
+            session,
+          });
 
           await StockHistory.create(
             [
@@ -220,7 +227,7 @@ export async function updatePurchaseOrderStatus(req, res) {
                 quantity: item.quantity,
                 unit: invDoc.unit,
                 performedBy,
-                description: `Received via PO from ${po.vendorName}`,
+                description: `Received via PO from ${po.vendorName} @ ${item.unitCost}/${invDoc.unit}`,
               },
             ],
             { session }

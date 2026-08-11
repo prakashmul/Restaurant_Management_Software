@@ -19,6 +19,7 @@ import {
   MapPin,
   ArrowLeftRight,
   Users2,
+  Receipt,
   Settings,
   User,
   ChevronUp,
@@ -67,6 +68,7 @@ export const NAV_ITEMS = [
   { path: '/staff', label: 'Users & Roles', icon: Users, end: false, permission: 'page.staff' },
   { path: '/locations', label: 'Locations', icon: MapPin, end: false, permission: 'page.locations' },
   { path: '/audit-log', label: 'Audit Log', icon: History, end: false, permission: 'page.auditlog' },
+  { path: '/expenses', label: 'Expenses', icon: Receipt, end: false, permission: 'page.expenses' },
   { path: '/settings', label: 'Settings', icon: Settings, end: false, permission: 'page.settings' },
 ] as const;
 

@@ -129,3 +129,33 @@ export async function restoreStockForOrder(order, performedByTag, session) {
     }
   }
 }
+
+// Blends a newly-received quantity's price into a location's existing
+// weighted-average cost (moving-average inventory costing) — the same
+// arithmetic whether the receipt came from a Purchase Order or a manual
+// restock. Must run inside the caller's transaction session, and quantity
+// must be positive (this is for receiving stock, not adjusting it). Only
+// ever called with a real unitCost — a genuine priced purchase; quantity-only
+// movements (sales, waste, refunds, unpriced restocks, transfers) must keep
+// using a plain $inc on Stock instead of this, since blending a price into
+// them makes no sense.
+//
+// e.g. 1.2kg on hand @ Rs.100/kg, receiving 4kg @ Rs.110/kg:
+// (1.2 * 100 + 4 * 110) / (1.2 + 4) = Rs.107.69/kg
+export async function receiveStockAtCost({ restaurantId, locationId, inventoryItemId, quantity, unitCost, fallbackCost, session }) {
+  const existing = await Stock.findOne({ restaurantId, locationId, inventoryItemId }).session(session);
+  // A location can theoretically show negative stock (see deductStockForOrder
+  // above) if consumption ran ahead of what was ever recorded as received —
+  // that negative quantity has no real cost basis to weight against, so a
+  // new priced receipt simply becomes the fresh average rather than being
+  // dragged down by it.
+  const priorQty = Math.max(0, existing?.totalQuantity || 0);
+  const priorCost = existing?.costPerUnit ?? fallbackCost ?? unitCost;
+  const newCost = (priorQty * priorCost + quantity * unitCost) / (priorQty + quantity);
+
+  return Stock.findOneAndUpdate(
+    { restaurantId, locationId, inventoryItemId },
+    { $inc: { totalQuantity: quantity }, $set: { costPerUnit: newCost } },
+    { new: true, upsert: true, session }
+  );
+}

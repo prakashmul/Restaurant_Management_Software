@@ -19,6 +19,7 @@ import { posApi } from '../../api/posApi';
 import { useAuth } from '../../auth/AuthContext';
 import { escapeHtml } from '../../lib/escapeHtml';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getPaymentEvents } from '../../lib/paymentEvents';
 import type { Order, Table } from '../../types';
 
 export const OrdersPage: React.FC = () => {
@@ -154,7 +155,11 @@ export const OrdersPage: React.FC = () => {
     });
   }, [orders, searchQuery, statusFilter, dateFilter, selectedDate]);
 
-  // Financial Summary Computations
+  // Financial Summary Computations — built from individual payment events
+  // (see lib/paymentEvents.ts), each counted on the day it actually
+  // happened, not the order's creation date. A 200 credit order paid 50
+  // yesterday and 150 today contributes 50 to yesterday's totals and 150 to
+  // today's, regardless of which day the order itself was placed on.
   const financialSummary = useMemo(() => {
     let targetDate = getTodayStr();
     if (dateFilter === 'yesterday') {
@@ -169,30 +174,15 @@ export const OrdersPage: React.FC = () => {
     let creditPaid = 0;
 
     orders.forEach((order) => {
-      const orderDate = formatLocalYYYYMMDD(order.createdAt);
-      
-      if (dateFilter !== 'all' && orderDate !== targetDate) return;
+      for (const event of getPaymentEvents(order)) {
+        const eventDate = formatLocalYYYYMMDD(event.date);
+        if (dateFilter !== 'all' && eventDate !== targetDate) continue;
 
-      const items = order.items || [];
-      const subtotal = order.subtotal ?? items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 0), 0);
-      const totalAmount = order.total ?? subtotal;
-      const refunded = (order.refundHistory || []).reduce((sum, r) => sum + (r.amount || 0), 0);
-      const netAmount = Math.max(0, totalAmount - refunded);
-      const status = (order.status || 'pending').toLowerCase();
-      const method = ((order as any).paymentMethod || '').toLowerCase();
-
-      // Direct Sales
-      if (status === 'paid' && method !== 'credit') {
-        todaysSale += netAmount;
-      }
-
-      // Credit Paid — count actual payments received against credit orders
-      // (partial or full), not just orders that reached full settlement,
-      // so a partial credit payment shows up immediately instead of only
-      // once the whole balance is paid off.
-      if (status === 'credit' || status === 'unsettled' || status === 'settled') {
-        const creditReceived = (order.paymentHistory || []).reduce((sum, p) => sum + (p.amount || 0), 0);
-        creditPaid += Math.max(0, creditReceived - refunded);
+        if (event.type === 'direct') {
+          todaysSale += event.amount;
+        } else {
+          creditPaid += event.amount;
+        }
       }
     });
 

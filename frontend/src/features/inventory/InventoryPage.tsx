@@ -59,6 +59,7 @@ export const InventoryPage = () => {
   const historyRef = useRef<HTMLDivElement>(null);
 
   const [restockAmount, setRestockAmount] = useState<{ [key: string]: string }>({});
+  const [restockUnitCost, setRestockUnitCost] = useState<{ [key: string]: string }>({});
   const [description, setDescription] = useState<{ [key: string]: string }>({});
 
   const loadInventory = async () => {
@@ -123,16 +124,35 @@ export const InventoryPage = () => {
       return;
     }
 
+    // Only meaningful when adding stock — a price on a deduction is ignored,
+    // same as the backend's own rule.
+    const costStr = restockUnitCost[itemId]?.trim();
+    let unitCost: number | undefined;
+    if (qty > 0 && costStr) {
+      const parsedCost = parseFloat(costStr);
+      if (isNaN(parsedCost) || parsedCost < 0) {
+        alert('Enter a valid price per unit, or leave it blank.');
+        return;
+      }
+      unitCost = parsedCost;
+    }
+
     try {
-      await posApi.restockItem(itemId, qty, { performedBy: performedByName, description: desc });
+      const updated = await posApi.restockItem(itemId, qty, {
+        performedBy: performedByName,
+        description: desc,
+        unitCost,
+      });
 
       setRestockAmount((prev) => ({ ...prev, [itemId]: '' }));
+      setRestockUnitCost((prev) => ({ ...prev, [itemId]: '' }));
       setDescription((prev) => ({ ...prev, [itemId]: '' }));
 
       await loadAllData();
 
       const action = qty < 0 ? 'deducted' : 'added';
-      alert(`Stock ${action} successfully!`);
+      const costNote = unitCost != null ? ` New average cost: ${currency}${(updated.costPerUnit || 0).toFixed(2)}/${item.unit}.` : '';
+      alert(`Stock ${action} successfully!${costNote}`);
     } catch (err) {
       alert('Failed to update stock');
     }
@@ -460,6 +480,20 @@ export const InventoryPage = () => {
                             }
                           }}
                           className="w-24 bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          placeholder={`Price/${item.unit} (optional)`}
+                          title="Price paid per unit for this batch — if entered, this location's average cost is recalculated. Leave blank for a plain count adjustment."
+                          value={itemId ? restockUnitCost[itemId] || '' : ''}
+                          onChange={(e) => {
+                            if (itemId) {
+                              setRestockUnitCost({ ...restockUnitCost, [itemId]: e.target.value });
+                            }
+                          }}
+                          className="w-28 bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                         />
                         <div className="relative">
                           <FileText className="w-3.5 h-3.5 absolute left-2 top-2.5 text-slate-500" />

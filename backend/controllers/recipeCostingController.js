@@ -2,6 +2,8 @@ import MenuItem from '../models/MenuItem.js';
 import Inventory from '../models/Inventory.js';
 import Order from '../models/Order.js';
 import StockHistory from '../models/StockHistory.js';
+import { attachStockQuantities } from './inventoryController.js';
+import { computeIngredientCost } from '../utils/ingredientCost.js';
 
 const SOLD_STATUSES = ['paid', 'credit', 'unsettled', 'settled'];
 const MANUAL_DEDUCTION_PATTERN = /^Auto-deducted for Order #/;
@@ -11,23 +13,6 @@ function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
-// Ingredient cost is computed live from the menu item's current recipe and
-// each ingredient's current Inventory.costPerUnit — this is "what this dish
-// costs to make right now", not a historical snapshot. A dish whose recipe
-// references a deleted inventory item can't be fully costed, so it's
-// reported with ingredientCost: null rather than an understated number.
-function computeIngredientCost(menuItem, inventoryCostById) {
-  if (!Array.isArray(menuItem.recipe) || menuItem.recipe.length === 0) return null;
-
-  let cost = 0;
-  for (const ingredient of menuItem.recipe) {
-    const costPerUnit = inventoryCostById.get(ingredient.inventoryItemId?.toString());
-    if (costPerUnit === undefined) return null;
-    cost += ingredient.quantityPerPortion * costPerUnit;
-  }
-  return cost;
 }
 
 export async function getMenuEngineering(req, res) {
@@ -52,7 +37,8 @@ export async function getMenuEngineering(req, res) {
       StockHistory.find(wasteQuery).sort({ createdAt: -1 }).limit(20),
     ]);
 
-    const inventoryCostById = new Map(inventoryItems.map((i) => [i._id.toString(), i.costPerUnit]));
+    const costedInventoryItems = await attachStockQuantities(inventoryItems, restaurantId, locationId);
+    const inventoryCostById = new Map(costedInventoryItems.map((i) => [i._id.toString(), i.costPerUnit]));
 
     const unitsSoldById = new Map();
     for (const order of soldOrders) {

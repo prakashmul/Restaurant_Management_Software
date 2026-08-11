@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Inventory from '../models/Inventory.js';
 import Stock from '../models/Stock.js';
 import StockHistory from '../models/StockHistory.js';
@@ -5,28 +6,54 @@ import PurchaseOrder from '../models/PurchaseOrder.js';
 import Vendor from '../models/Vendor.js';
 import { parsePagination, paginatedResponse } from '../utils/pagination.js';
 import { emitChange } from '../realtime/socket.js';
+import { receiveStockAtCost } from '../services/stockService.js';
 
 // Merges each org-wide Inventory (ingredient catalog) item with its on-hand
-// quantity. When a location is selected, that's the location's own Stock
-// document; when unscoped, quantities are summed across every location so
+// quantity and cost. When a location is selected, that's the location's own
+// Stock document; when unscoped, quantity is summed across every location so
 // the number still means something ("all locations combined").
+//
+// Cost works the same way but is never a plain sum: it's tracked per
+// location (Stock.costPerUnit — see the weighted-average costing feature),
+// with Inventory.costPerUnit as the fallback for a location that's never
+// actually received this ingredient yet. Scoped to one location, the result
+// is that location's own cost. Unscoped, it's a quantity-weighted blend
+// across every location that has a recorded cost — the aggregate/Head
+// Office view of "roughly what this ingredient costs across the org."
 export async function attachStockQuantities(items, restaurantId, locationId) {
   const itemIds = items.map((i) => i._id);
   const stockQuery = { restaurantId, inventoryItemId: { $in: itemIds } };
   if (locationId) stockQuery.locationId = locationId;
   const stocks = await Stock.find(stockQuery);
 
-  const qtyById = new Map();
+  const stocksById = new Map();
   for (const stock of stocks) {
     const key = stock.inventoryItemId.toString();
-    qtyById.set(key, (qtyById.get(key) || 0) + stock.totalQuantity);
+    if (!stocksById.has(key)) stocksById.set(key, []);
+    stocksById.get(key).push(stock);
   }
 
   return items.map((item) => {
-    const totalQuantity = qtyById.get(item._id.toString()) || 0;
+    const locationStocks = stocksById.get(item._id.toString()) || [];
+    const totalQuantity = locationStocks.reduce((sum, s) => sum + s.totalQuantity, 0);
     const threshold = item.lowStockThreshold || 0;
+
+    let costPerUnit = item.costPerUnit;
+    const costed = locationStocks.filter((s) => s.costPerUnit != null);
+    if (costed.length > 0) {
+      const costedQty = costed.reduce((sum, s) => sum + s.totalQuantity, 0);
+      // If every costed location's quantity is currently 0 (or negative),
+      // there's nothing to weight by — fall back to the most recently
+      // recorded cost instead of dividing by zero.
+      costPerUnit =
+        costedQty > 0
+          ? costed.reduce((sum, s) => sum + s.totalQuantity * s.costPerUnit, 0) / costedQty
+          : costed[costed.length - 1].costPerUnit;
+    }
+
     return {
       ...item.toObject(),
+      costPerUnit,
       totalQuantity,
       isLowStock: threshold > 0 && totalQuantity < threshold,
     };
@@ -72,6 +99,7 @@ export async function createInventoryItem(req, res) {
       locationId,
       inventoryItemId: newItem._id,
       totalQuantity,
+      costPerUnit,
     });
 
     await StockHistory.create({
@@ -99,6 +127,7 @@ export async function createInventoryItem(req, res) {
 }
 
 export async function restockInventoryItem(req, res) {
+  const session = await mongoose.startSession();
   try {
     const { restaurantId, locationId } = req;
     if (!locationId) {
@@ -107,40 +136,72 @@ export async function restockInventoryItem(req, res) {
     const { id } = req.params;
 
     const qtyToChange = req.body.quantity !== undefined ? req.body.quantity : req.body.addQuantity;
-    const { performedBy, description } = req.body;
+    const { performedBy, description, unitCost } = req.body;
+    // A price only makes sense when stock is actually being added — a manual
+    // deduction (correcting a miscount, etc.) never carries a cost basis.
+    const isPricedReceipt = unitCost != null && qtyToChange > 0;
 
     const item = await Inventory.findOne({ _id: id, restaurantId });
     if (!item) {
       return res.status(404).json({ message: 'Inventory item not found' });
     }
 
-    const stock = await Stock.findOneAndUpdate(
-      { restaurantId, locationId, inventoryItemId: item._id },
-      { $inc: { totalQuantity: qtyToChange } },
-      { new: true, upsert: true }
-    );
+    let stock;
+    await session.withTransaction(async () => {
+      if (isPricedReceipt) {
+        stock = await receiveStockAtCost({
+          restaurantId,
+          locationId,
+          inventoryItemId: item._id,
+          quantity: qtyToChange,
+          unitCost,
+          fallbackCost: item.costPerUnit,
+          session,
+        });
+      } else {
+        stock = await Stock.findOneAndUpdate(
+          { restaurantId, locationId, inventoryItemId: item._id },
+          { $inc: { totalQuantity: qtyToChange } },
+          { new: true, upsert: true, session }
+        );
+      }
 
-    await StockHistory.create({
-      restaurantId,
-      locationId,
-      itemId: item._id,
-      itemName: item.name,
-      quantity: qtyToChange,
-      unit: item.unit,
-      performedBy: performedBy || 'Anonymous',
-      description: description || (qtyToChange > 0 ? 'Manual Restock' : 'Manual Deduction'),
+      await StockHistory.create(
+        [
+          {
+            restaurantId,
+            locationId,
+            itemId: item._id,
+            itemName: item.name,
+            quantity: qtyToChange,
+            unit: item.unit,
+            performedBy: performedBy || 'Anonymous',
+            description:
+              description ||
+              (isPricedReceipt
+                ? `Manual Restock @ ${unitCost}/${item.unit}`
+                : qtyToChange > 0
+                ? 'Manual Restock'
+                : 'Manual Deduction'),
+          },
+        ],
+        { session }
+      );
     });
 
     emitChange('inventory');
     const threshold = item.lowStockThreshold || 0;
     res.json({
       ...item.toObject(),
+      costPerUnit: stock.costPerUnit ?? item.costPerUnit,
       totalQuantity: stock.totalQuantity,
       isLowStock: threshold > 0 && stock.totalQuantity < threshold,
     });
   } catch (err) {
     req.log.error({ err }, 'Error updating inventory');
     res.status(500).json({ error: 'Failed to update inventory stock' });
+  } finally {
+    session.endSession();
   }
 }
 
@@ -224,6 +285,19 @@ export async function updateInventoryItem(req, res) {
     if (reorderQuantity !== undefined) item.reorderQuantity = reorderQuantity;
     if (barcode !== undefined) item.barcode = barcode ? barcode.trim() : null;
     await item.save();
+
+    // A direct cost edit here is a manual correction ("this number is just
+    // wrong"), not a purchase — so it overwrites the current location's
+    // weighted-average cost outright rather than blending into it like a
+    // priced restock/PO receipt does. Inventory.costPerUnit above still
+    // updates too, as the fallback for locations with no stock history yet.
+    if (costPerUnit !== undefined && locationId) {
+      await Stock.findOneAndUpdate(
+        { restaurantId, locationId, inventoryItemId: item._id },
+        { $set: { costPerUnit } },
+        { upsert: true }
+      );
+    }
 
     emitChange('inventory');
     const [withStock] = await attachStockQuantities([item], restaurantId, locationId);

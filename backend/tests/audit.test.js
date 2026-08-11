@@ -186,6 +186,30 @@ describe('audit log', () => {
     expect(res.body.every((e) => e.actorEmail === ownerEmail)).toBe(true);
   });
 
+  it('hides another location\'s location-tied entries but keeps org-wide ones visible', async () => {
+    const branchRes = await asOwner(request(app).post('/api/locations')).send({ name: 'Audit Branch' });
+    const branchId = branchRes.body._id;
+    const asOwnerAtBranch = (req) => asOwner(req).set('X-Location-Id', branchId);
+
+    const tableRes = await asOwner(request(app).post('/api/tables')).send({ number: 890, seats: 2 });
+    await asOwner(request(app).delete(`/api/tables/${tableRes.body._id}`));
+    const mainLocationAction = await latestAuditAction();
+    expect(mainLocationAction).toBe('deleted Table #890');
+
+    const branchTableRes = await asOwnerAtBranch(request(app).post('/api/tables')).send({ number: 891, seats: 2 });
+    await asOwnerAtBranch(request(app).delete(`/api/tables/${branchTableRes.body._id}`));
+
+    const branchAuditRes = await asOwnerAtBranch(request(app).get('/api/audit-log?limit=50'));
+    const branchActions = branchAuditRes.body.map((e) => e.action);
+    expect(branchActions).toContain('deleted Table #891');
+    expect(branchActions).not.toContain('deleted Table #890');
+
+    await asOwner(request(app).post('/api/categories')).send({ name: 'Audit Org-Wide Category' });
+    await asOwner(request(app).delete(`/api/categories/${encodeURIComponent('Audit Org-Wide Category')}`));
+    const branchAuditRes2 = await asOwnerAtBranch(request(app).get('/api/audit-log?limit=50'));
+    expect(branchAuditRes2.body.map((e) => e.action)).toContain('deleted category "Audit Org-Wide Category"');
+  });
+
   it('filters by a date range, excluding entries outside it', async () => {
     const farFuture = '2099-01-01';
     const res = await asOwner(request(app).get(`/api/audit-log?startDate=${farFuture}&endDate=${farFuture}`));

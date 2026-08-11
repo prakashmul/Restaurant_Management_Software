@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle, FolderPlus, Users, ShoppingCart, ChevronUp, X } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, User, CreditCard, UtensilsCrossed, XCircle, FolderPlus, ShoppingCart, ChevronUp, X } from 'lucide-react';
 import { posApi } from '../../api/posApi';
 import { TableDetailModal } from './TableDetailModal';
 import { CategoryModal } from './CategoryModal';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 import { useOfflineQueueContext } from '../../offline/OfflineQueueContext';
+import { useCurrency } from '../../hooks/useCurrency';
 import type { Table, MenuItem, OrderItem, Order, InventoryItem } from '../../types';
 
 // Helper function to safely extract string IDs across Mongo populated objects or standard strings
@@ -15,6 +16,7 @@ const getId = (item: any): string => {
 };
 
 export const PosPage = () => {
+  const currency = useCurrency();
   const [tables, setTables] = useState<Table[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -23,9 +25,6 @@ export const PosPage = () => {
 
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [currentCart, setCurrentCart] = useState<OrderItem[]>([]);
-  // Which diner new items get added to. null = unassigned/shared (e.g. a
-  // starter for the whole table) — the default, so split-by-seat is opt-in.
-  const [activeSeat, setActiveSeat] = useState<number | null>(null);
 
   // Mobile/tablet only — the cart lives in a slide-up sheet below lg instead
   // of a permanent column, opened from the persistent bottom bar.
@@ -192,27 +191,18 @@ export const PosPage = () => {
     if (!itemId) return;
 
     setCurrentCart((prev) => {
-      const existing = prev.find(
-        (i) => getId(i.menuItemId) === itemId && (i.seatNumber ?? null) === activeSeat
-      );
+      const existing = prev.find((i) => getId(i.menuItemId) === itemId);
       if (existing) {
         return prev.map((i) => (i === existing ? { ...i, quantity: i.quantity + 1 } : i));
       }
-      return [
-        ...prev,
-        { menuItemId: itemId, name: item.name, price: item.price || 0, quantity: 1, seatNumber: activeSeat },
-      ];
+      return [...prev, { menuItemId: itemId, name: item.name, price: item.price || 0, quantity: 1 }];
     });
   };
 
-  const updateQty = (menuItemId: string, seatNumber: number | null, delta: number) => {
+  const updateQty = (menuItemId: string, delta: number) => {
     setCurrentCart((prev) =>
       prev
-        .map((i) =>
-          getId(i.menuItemId) === menuItemId && (i.seatNumber ?? null) === seatNumber
-            ? { ...i, quantity: i.quantity + delta }
-            : i
-        )
+        .map((i) => (getId(i.menuItemId) === menuItemId ? { ...i, quantity: i.quantity + delta } : i))
         .filter((i) => i.quantity > 0)
     );
   };
@@ -284,105 +274,57 @@ export const PosPage = () => {
   // Shared between the permanent desktop column and the mobile slide-up
   // sheet — same live state, just two different places to display it.
   const cartTopSection = (
-    <>
-      <div className="border-b border-slate-800 pb-3 mb-4 flex justify-between items-center">
-        <div>
-          <h2 className="font-bold text-base text-slate-100">
-            {selectedTable ? `Table #${selectedTable.number} Order` : 'No Table Selected'}
-          </h2>
-          <p className="text-xs text-slate-400">Items added for current seat</p>
-        </div>
-        {currentCart.length > 0 && (
-          <button
-            onClick={handleCancelOrder}
-            className="text-xs text-rose-400 flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-lg"
-          >
-            <XCircle className="w-3.5 h-3.5" /> Clear
-          </button>
-        )}
+    <div className="border-b border-slate-800 pb-3 mb-4 flex justify-between items-center">
+      <div>
+        <h2 className="font-bold text-base text-slate-100">
+          {selectedTable ? `Table #${selectedTable.number} Order` : 'No Table Selected'}
+        </h2>
+        <p className="text-xs text-slate-400">Current order for this table</p>
       </div>
-
-      {selectedTable && (
-        <div className="mb-3 -mt-1">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-            <Users className="w-3 h-3" /> Adding items for
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => setActiveSeat(null)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
-                activeSeat === null
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Shared
-            </button>
-            {Array.from({ length: Math.max(selectedTable.seats || 4, 1) }, (_, i) => i + 1).map((seat) => (
-              <button
-                key={seat}
-                onClick={() => setActiveSeat(seat)}
-                className={`w-8 h-7 rounded-lg text-[11px] font-bold transition ${
-                  activeSeat === seat
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {seat}
-              </button>
-            ))}
-          </div>
-        </div>
+      {currentCart.length > 0 && (
+        <button
+          onClick={handleCancelOrder}
+          className="text-xs text-rose-400 flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-lg"
+        >
+          <XCircle className="w-3.5 h-3.5" /> Clear
+        </button>
       )}
-    </>
+    </div>
   );
 
   const cartItemsList = (
-    <div className="space-y-3 lg:max-h-[450px] overflow-y-auto pr-1">
+    <div className="space-y-1.5 lg:max-h-[450px] overflow-y-auto pr-1">
       {currentCart.length === 0 ? (
         <div className="text-center text-slate-500 text-xs py-12">
           Click a category card to add items to Table #{selectedTable?.number}.
         </div>
       ) : (
-        Object.entries(
-          currentCart.reduce<Record<string, OrderItem[]>>((groups, item) => {
-            const key = item.seatNumber != null ? `Seat ${item.seatNumber}` : 'Shared';
-            (groups[key] ||= []).push(item);
-            return groups;
-          }, {})
-        )
-          .sort(([a], [b]) => (a === 'Shared' ? -1 : b === 'Shared' ? 1 : a.localeCompare(b, undefined, { numeric: true })))
-          .map(([seatLabel, items]) => (
-            <div key={seatLabel} className="space-y-1.5">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{seatLabel}</div>
-              {items.map((item) => (
-                <div
-                  key={`${getId(item.menuItemId)}-${item.seatNumber ?? 'shared'}`}
-                  className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800"
-                >
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-200">{item.name}</h4>
-                    <span className="text-[10px] text-slate-400">Rs. {(item.price || 0).toFixed(2)} each</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => updateQty(getId(item.menuItemId), item.seatNumber ?? null, -1)}
-                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
-                    >
-                      -
-                    </button>
-                    <span className="text-xs font-mono font-bold w-4 text-center">{item.quantity}</span>
-                    <button
-                      onClick={() => updateQty(getId(item.menuItemId), item.seatNumber ?? null, 1)}
-                      className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              ))}
+        currentCart.map((item) => (
+          <div
+            key={getId(item.menuItemId)}
+            className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800"
+          >
+            <div>
+              <h4 className="text-xs font-semibold text-slate-200">{item.name}</h4>
+              <span className="text-[10px] text-slate-400">{currency} {(item.price || 0).toFixed(2)} each</span>
             </div>
-          ))
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => updateQty(getId(item.menuItemId), -1)}
+                className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
+              >
+                -
+              </button>
+              <span className="text-xs font-mono font-bold w-4 text-center">{item.quantity}</span>
+              <button
+                onClick={() => updateQty(getId(item.menuItemId), 1)}
+                className="w-6 h-6 bg-slate-800 text-xs rounded font-bold text-slate-300 hover:bg-slate-700"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ))
       )}
     </div>
   );
@@ -391,7 +333,7 @@ export const PosPage = () => {
     <div className="border-t border-slate-800 pt-4 space-y-3 mt-4">
       <div className="flex justify-between text-sm font-bold text-slate-100">
         <span>Total</span>
-        <span className="font-mono text-indigo-400">Rs. {subtotal.toFixed(2)}</span>
+        <span className="font-mono text-indigo-400">{currency} {subtotal.toFixed(2)}</span>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -554,7 +496,7 @@ export const PosPage = () => {
             {cartItemCount} item{cartItemCount === 1 ? '' : 's'}
           </span>
           <span className="flex items-center gap-2 text-sm font-bold">
-            Rs. {subtotal.toFixed(2)}
+            {currency} {subtotal.toFixed(2)}
             <ChevronUp className="w-4 h-4" />
           </span>
         </button>

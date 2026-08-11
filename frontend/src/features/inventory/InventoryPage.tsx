@@ -19,8 +19,9 @@ type StockHistoryLog = {
 };
 
 export const InventoryPage = () => {
-  const { isOwner, currentLocation, currentUser } = useAuth();
+  const { isOwner, currentLocation, currentUser, currentRestaurant } = useAuth();
   const performedByName = currentUser?.name || 'Unknown';
+  const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
 
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [history, setHistory] = useState<StockHistoryLog[]>([]);
@@ -410,7 +411,7 @@ export const InventoryPage = () => {
                       </span>
                     </td>
                     <td className="p-4 font-mono text-slate-400">
-                      ${(item.costPerUnit || 0).toFixed(2)} / {item.unit}
+                      {currency}{(item.costPerUnit || 0).toFixed(2)} / {item.unit}
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-1.5">
@@ -693,7 +694,7 @@ export const InventoryPage = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Unit Cost ($)</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">Unit Cost ({currency})</label>
                   <input
                     type="number"
                     step="any"
@@ -870,7 +871,7 @@ export const InventoryPage = () => {
                           {entry.quantity} {priceHistoryItem.unit}
                         </td>
                         <td className="py-2 text-right font-mono text-emerald-400">
-                          ${entry.unitCost.toFixed(2)}
+                          {currency}{entry.unitCost.toFixed(2)}
                         </td>
                       </tr>
                     ))}

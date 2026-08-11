@@ -101,7 +101,7 @@ export const HeadOfficePage: React.FC = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <div className="text-[9.5px] uppercase tracking-wider text-slate-500 font-semibold">Today's Sales</div>
-                      <div className="text-base font-bold mt-0.5 tabular-nums">Rs. {loc.todaySales.toFixed(0)}</div>
+                      <div className="text-base font-bold mt-0.5 tabular-nums">{loc.currency} {loc.todaySales.toFixed(0)}</div>
                     </div>
                     <div>
                       <div className="text-[9.5px] uppercase tracking-wider text-slate-500 font-semibold">Food Cost</div>
@@ -115,7 +115,7 @@ export const HeadOfficePage: React.FC = () => {
                     </div>
                     <div>
                       <div className="text-[9.5px] uppercase tracking-wider text-slate-500 font-semibold">Credit Exposure</div>
-                      <div className="text-base font-bold mt-0.5 tabular-nums">Rs. {loc.creditExposure.toFixed(0)}</div>
+                      <div className="text-base font-bold mt-0.5 tabular-nums">{loc.currency} {loc.creditExposure.toFixed(0)}</div>
                     </div>
                   </div>
                 </div>
@@ -168,7 +168,7 @@ export const HeadOfficePage: React.FC = () => {
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-1 text-[10.5px] text-slate-400">
-                    <span>Rs. {loc.sales7d.toFixed(0)} sales · {loc.laborHours7d}h labor</span>
+                    <span>{loc.currency} {loc.sales7d.toFixed(0)} sales · {loc.laborHours7d}h labor</span>
                     {loc.salesTrendPercent !== null && (
                       <span className={`inline-flex items-center gap-1 font-bold shrink-0 ${loc.salesTrendPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                         {loc.salesTrendPercent >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
@@ -197,7 +197,7 @@ export const HeadOfficePage: React.FC = () => {
                   {ranked.map((loc) => (
                     <tr key={loc.id} className="hover:bg-slate-800/30 transition">
                       <td className="px-5 py-3 font-semibold text-slate-200">{loc.name}</td>
-                      <td className="px-5 py-3 text-right tabular-nums">Rs. {loc.sales7d.toFixed(0)}</td>
+                      <td className="px-5 py-3 text-right tabular-nums">{loc.currency} {loc.sales7d.toFixed(0)}</td>
                       <td
                         className="px-5 py-3 text-right tabular-nums font-semibold"
                         style={{
@@ -208,7 +208,7 @@ export const HeadOfficePage: React.FC = () => {
                         {loc.foodCostPercent !== null ? `${loc.foodCostPercent.toFixed(1)}%` : '—'}
                       </td>
                       <td className="px-5 py-3 text-right tabular-nums text-slate-400">{loc.laborHours7d}</td>
-                      <td className="px-5 py-3 text-right tabular-nums text-slate-400">Rs. {loc.creditExposure.toFixed(0)}</td>
+                      <td className="px-5 py-3 text-right tabular-nums text-slate-400">{loc.currency} {loc.creditExposure.toFixed(0)}</td>
                       <td className="px-5 py-3">
                         {loc.salesTrendPercent === null ? (
                           <span className="text-slate-600">—</span>

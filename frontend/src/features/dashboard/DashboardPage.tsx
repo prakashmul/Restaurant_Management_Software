@@ -53,6 +53,7 @@ interface OrderRecord {
 export const DashboardPage: React.FC = () => {
   const { currentUser: authUser, currentRestaurant, currentLocation, isOwner } = useAuth();
   const currentUser = authUser?.name || 'Current Employee';
+  const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
 
   // A location only gets a geofence once its Owner configures one — every
   // new location starts with latitude/longitude unset. Until then,
@@ -125,9 +126,16 @@ export const DashboardPage: React.FC = () => {
       if (order.status === 'cancelled') return;
 
       grossSales += order.total || 0;
+      const refunded = (order.refundHistory || []).reduce((sum, r) => sum + (r.amount || 0), 0);
 
-      if (order.status === 'paid' || order.status === 'settled') {
-        netPaidSales += order.total || 0;
+      if (order.status === 'paid') {
+        netPaidSales += Math.max(0, (order.total || 0) - refunded);
+      } else if (order.status === 'settled' || order.status === 'credit' || order.status === 'unsettled') {
+        // Count actual payments received against credit orders (partial or
+        // full), not just orders that reached full settlement, so a partial
+        // credit payment is reflected here immediately.
+        const creditReceived = (order.paymentHistory || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+        netPaidSales += Math.max(0, creditReceived - refunded);
       }
 
       if (order.status === 'credit' || order.status === 'unsettled') {
@@ -571,7 +579,7 @@ export const DashboardPage: React.FC = () => {
               <div>
                 <p className="text-xs font-medium text-slate-400">Gross Sales</p>
                 <h3 className="text-2xl font-bold text-white mt-1">
-                  Rs. {dashboardStats.grossSales.toLocaleString()}
+                  {currency} {dashboardStats.grossSales.toLocaleString()}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">Total menu items billed</p>
               </div>
@@ -585,7 +593,7 @@ export const DashboardPage: React.FC = () => {
               <div>
                 <p className="text-xs font-medium text-slate-400">Paid Revenue</p>
                 <h3 className="text-2xl font-bold text-emerald-400 mt-1">
-                  Rs. {dashboardStats.netPaidSales.toLocaleString()}
+                  {currency} {dashboardStats.netPaidSales.toLocaleString()}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">Fully collected payments</p>
               </div>
@@ -613,7 +621,7 @@ export const DashboardPage: React.FC = () => {
               <div>
                 <p className="text-xs font-medium text-slate-400">Pending Credit Owed</p>
                 <h3 className="text-2xl font-bold text-amber-400 mt-1">
-                  Rs. {dashboardStats.creditOwed.toLocaleString()}
+                  {currency} {dashboardStats.creditOwed.toLocaleString()}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">Customer ledger balance</p>
               </div>

@@ -65,6 +65,7 @@ function AppShell() {
           name: chosen.name,
           address: chosen.address,
           phone: chosen.phone,
+          currency: chosen.currency,
           isActive: chosen.isActive,
           geofence: chosen.geofence,
         });

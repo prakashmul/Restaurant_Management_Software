@@ -36,6 +36,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
       name: chosen.name,
       address: chosen.address,
       phone: chosen.phone,
+      currency: chosen.currency,
       isActive: chosen.isActive,
       geofence: chosen.geofence,
     });

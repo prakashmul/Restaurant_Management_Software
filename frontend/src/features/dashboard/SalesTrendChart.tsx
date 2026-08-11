@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { TrendingUp } from 'lucide-react';
+import { useCurrency } from '../../hooks/useCurrency';
 
 interface OrderLike {
   total: number;
@@ -18,6 +19,7 @@ function dayKey(d: Date): string {
 }
 
 export const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ orders, days = 14 }) => {
+  const currency = useCurrency();
   const data = useMemo(() => {
     const revenueByDay = new Map<string, number>();
     const today = new Date();
@@ -83,7 +85,7 @@ export const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ orders, days =
                 contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, fontSize: 12 }}
                 labelStyle={{ color: '#cbd5e1' }}
                 itemStyle={{ color: '#818cf8' }}
-                formatter={(value: number) => [`Rs. ${value.toLocaleString()}`, 'Revenue']}
+                formatter={(value: number) => [`${currency} ${value.toLocaleString()}`, 'Revenue']}
               />
               <Area type="monotone" dataKey="revenue" stroke="#818cf8" strokeWidth={2} fill="url(#revenueFill)" />
             </AreaChart>

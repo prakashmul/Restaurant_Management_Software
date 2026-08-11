@@ -17,8 +17,6 @@ import {
   Tag,
   HandCoins,
   Users,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 import type { Table, Order } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
@@ -46,6 +44,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   onVoidOrder,
 }) => {
   const { currentRestaurant, currentLocation, hasPermission } = useAuth();
+  const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
   const orderId = order?._id || order?.id || '';
   const tableId = table._id || table.id || '';
 
@@ -56,8 +55,6 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   const [discountReason, setDiscountReason] = useState('');
   const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
   const [discountError, setDiscountError] = useState('');
-
-  const [isSeatSplitOpen, setIsSeatSplitOpen] = useState(false);
 
   const [loyaltyPhone, setLoyaltyPhone] = useState('');
   const [loyaltyName, setLoyaltyName] = useState('');
@@ -106,31 +103,6 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   const tax = displayOrder?.tax ?? subtotal * (taxRatePercent / 100);
   const total = displayOrder?.total ?? subtotal + tax + (tip?.amount || 0);
 
-  // Groups by seat, then proportionally allocates the *whole* bill (tax,
-  // discount, tip included) by each seat's share of the pre-tax subtotal —
-  // a flat item-price split would misstate what a seat actually owes once
-  // a table-wide discount or tip is in play. Purely informational: actual
-  // payment is still collected as one lump sum via the tender buttons below.
-  const seatBreakdown = (() => {
-    const bySeat = new Map<string, { label: string; seatSubtotal: number }>();
-    for (const item of itemsToDisplay) {
-      const key = item.seatNumber != null ? String(item.seatNumber) : 'shared';
-      const label = item.seatNumber != null ? `Seat ${item.seatNumber}` : 'Shared / Unassigned';
-      const lineTotal = (item.price || 0) * (item.quantity || 0);
-      const existing = bySeat.get(key);
-      if (existing) existing.seatSubtotal += lineTotal;
-      else bySeat.set(key, { label, seatSubtotal: lineTotal });
-    }
-    return Array.from(bySeat.entries())
-      .sort(([a], [b]) => (a === 'shared' ? -1 : b === 'shared' ? 1 : Number(a) - Number(b)))
-      .map(([key, { label, seatSubtotal }]) => ({
-        key,
-        label,
-        seatSubtotal,
-        seatTotal: subtotal > 0 ? (seatSubtotal / subtotal) * total : 0,
-      }));
-  })();
-  const hasSeatAssignments = itemsToDisplay.some((item) => item.seatNumber != null);
   const canDiscount = hasPermission('orders.discount');
   const canTip = hasPermission('orders.tip');
   const canAttachCustomer = hasPermission('orders.checkout');
@@ -350,15 +322,15 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
         const displayTotal = Number(total.toFixed(2));
 
         if (Math.abs(splitSum - displayTotal) > 0.01) {
-          alert(`Split sum (Rs. ${splitSum}) must equal the total bill (Rs. ${displayTotal}).`);
+          alert(`Split sum (${currency} ${splitSum}) must equal the total bill (${currency} ${displayTotal}).`);
           setIsProcessing(false);
           return;
         }
 
         const splitParts: string[] = [];
-        if (cash > 0) splitParts.push(`Cash: Rs.${cash}`);
-        if (card > 0) splitParts.push(`Card: Rs.${card}`);
-        if (qr > 0) splitParts.push(`QR: Rs.${qr}`);
+        if (cash > 0) splitParts.push(`Cash: ${currency}${cash}`);
+        if (card > 0) splitParts.push(`Card: ${currency}${card}`);
+        if (qr > 0) splitParts.push(`QR: ${currency}${qr}`);
 
         const formattedMethod = `SPLIT (${splitParts.join(', ')})`;
         await onPayOrder(orderId, formattedMethod);
@@ -505,11 +477,11 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                       <span className="font-bold text-sm text-slate-100">{item.name}</span>
                     </div>
                     <div className="text-xs text-slate-400 font-mono">
-                      × {item.quantity} @ Rs. {(item.price || 0).toFixed(2)}
+                      × {item.quantity} @ {currency} {(item.price || 0).toFixed(2)}
                     </div>
                   </div>
                   <div className="font-mono text-sm font-bold text-slate-100">
-                    Rs. {((item.price || 0) * (item.quantity || 0)).toFixed(2)}
+                    {currency} {((item.price || 0) * (item.quantity || 0)).toFixed(2)}
                   </div>
                 </div>
               ))}
@@ -519,7 +491,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
           <div className="bg-slate-950/80 border border-slate-800/80 p-4 rounded-2xl space-y-2">
             <div className="flex justify-between items-center text-xs text-slate-400">
               <span>Subtotal</span>
-              <span className="font-mono">Rs. {subtotal.toFixed(2)}</span>
+              <span className="font-mono">{currency} {subtotal.toFixed(2)}</span>
             </div>
             {discount && (
               <div className="flex justify-between items-center text-xs text-emerald-400">
@@ -538,12 +510,12 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                     </button>
                   )}
                 </span>
-                <span className="font-mono">- Rs. {discount.amount.toFixed(2)}</span>
+                <span className="font-mono">- {currency} {discount.amount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between items-center text-xs text-slate-400">
               <span>Tax ({taxRatePercent % 1 === 0 ? taxRatePercent : taxRatePercent.toFixed(1)}%)</span>
-              <span className="font-mono">Rs. {tax.toFixed(2)}</span>
+              <span className="font-mono">{currency} {tax.toFixed(2)}</span>
             </div>
             {tip && (
               <div className="flex justify-between items-center text-xs text-amber-400">
@@ -561,39 +533,14 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                     </button>
                   )}
                 </span>
-                <span className="font-mono">+ Rs. {tip.amount.toFixed(2)}</span>
+                <span className="font-mono">+ {currency} {tip.amount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between items-center pt-2 border-t border-slate-800">
               <span className="text-base font-bold text-slate-200">Total</span>
-              <span className="text-xl font-black font-mono text-indigo-400">Rs. {total.toFixed(2)}</span>
+              <span className="text-xl font-black font-mono text-indigo-400">{currency} {total.toFixed(2)}</span>
             </div>
           </div>
-
-          {hasSeatAssignments && (
-            <div>
-              <button
-                onClick={() => setIsSeatSplitOpen((prev) => !prev)}
-                className="text-[11px] font-semibold text-teal-400 hover:text-teal-300 transition inline-flex items-center gap-1.5"
-              >
-                <Users className="w-3 h-3" /> Split by seat
-                {isSeatSplitOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              </button>
-              {isSeatSplitOpen && (
-                <div className="mt-2 bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-1.5">
-                  <p className="text-[10px] text-slate-500 mb-1">
-                    Tax, discount, and tip allocated proportionally — informational only, still one payment below.
-                  </p>
-                  {seatBreakdown.map((seat) => (
-                    <div key={seat.key} className="flex justify-between items-center text-xs">
-                      <span className="text-slate-300 font-medium">{seat.label}</span>
-                      <span className="font-mono text-teal-400 font-bold">Rs. {seat.seatTotal.toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {!paymentSuccess && canAttachCustomer && (
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
@@ -661,7 +608,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                       </div>
                       {Number(redeemPointsValue) > 0 && (
                         <p className="text-[10px] text-slate-500">
-                          ≈ Rs. {(Number(redeemPointsValue) * pointValueRs).toFixed(2)} off
+                          ≈ {currency} {(Number(redeemPointsValue) * pointValueRs).toFixed(2)} off
                         </p>
                       )}
                     </div>
@@ -700,7 +647,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                         onClick={() => setDiscountType('flat')}
                         className={`px-2.5 py-1.5 text-[11px] font-bold ${discountType === 'flat' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400'}`}
                       >
-                        Rs.
+                        {currency}
                       </button>
                     </div>
                     <input
@@ -771,7 +718,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                         onClick={() => setTipType('flat')}
                         className={`px-2.5 py-1.5 text-[11px] font-bold ${tipType === 'flat' ? 'bg-amber-500 text-slate-950' : 'bg-slate-900 text-slate-400'}`}
                       >
-                        Rs.
+                        {currency}
                       </button>
                     </div>
                     <input
@@ -987,8 +934,8 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
               >
                 <CheckCircle2 className="w-4 h-4" />
                 {paymentMethod === 'credit'
-                  ? `Record Credit Order — Rs. ${total.toFixed(2)}`
-                  : `Pay — Rs. ${total.toFixed(2)}`}
+                  ? `Record Credit Order — ${currency} ${total.toFixed(2)}`
+                  : `Pay — ${currency} ${total.toFixed(2)}`}
               </button>
 
               <div className="text-center">
@@ -1050,8 +997,8 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                 <tr key={idx}>
                   <td>{item.name}</td>
                   <td className="text-right">{item.quantity}</td>
-                  <td className="text-right">Rs.{(item.price || 0).toFixed(2)}</td>
-                  <td className="text-right">Rs.{((item.price || 0) * (item.quantity || 0)).toFixed(2)}</td>
+                  <td className="text-right">{currency}{(item.price || 0).toFixed(2)}</td>
+                  <td className="text-right">{currency}{((item.price || 0) * (item.quantity || 0)).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1060,11 +1007,11 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
           <div className="totals">
             <div>
               <span>Subtotal:</span>
-              <span>Rs.{subtotal.toFixed(2)}</span>
+              <span>{currency}{subtotal.toFixed(2)}</span>
             </div>
             <div className="grand-total">
               <span>TOTAL:</span>
-              <span>Rs.{total.toFixed(2)}</span>
+              <span>{currency}{total.toFixed(2)}</span>
             </div>
           </div>
 

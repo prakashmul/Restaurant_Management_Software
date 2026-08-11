@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, X, Utensils, Package, Trash2 } from 'lucide-react';
 import type { MenuItem, InventoryItem } from '../../types';
 import { posApi } from '../../api/posApi';
+import { useCurrency } from '../../hooks/useCurrency';
 
 interface CategoryModalProps {
   category: string;
@@ -20,6 +21,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
   onAddToCart,
   onItemCreated,
 }) => {
+  const currency = useCurrency();
   const [showAddForm, setShowAddForm] = useState(false);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -129,7 +131,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400 block mb-1">Price (Rs.)</label>
+                  <label className="text-xs text-slate-400 block mb-1">Price ({currency})</label>
                   <input
                     type="number"
                     step="0.01"
@@ -238,7 +240,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                     </div>
 
                     <div className="mt-3 flex justify-between items-center">
-                      <span className="font-mono text-xs text-slate-400">Rs. {(item.price || 0).toFixed(2)}</span>
+                      <span className="font-mono text-xs text-slate-400">{currency} {(item.price || 0).toFixed(2)}</span>
                       <span className="bg-indigo-600 text-white p-1 rounded-md text-[10px]">
                         <Plus className="w-3 h-3" />
                       </span>

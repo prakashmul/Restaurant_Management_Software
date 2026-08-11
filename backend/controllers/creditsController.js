@@ -2,20 +2,24 @@ import Order from '../models/Order.js';
 import Customer from '../models/Customer.js';
 import { emitChange } from '../realtime/socket.js';
 import { logAudit } from '../services/auditService.js';
+import { getCurrencySymbol } from '../utils/currency.js';
 
 export async function getCreditLedger(req, res) {
   try {
     const { restaurantId, locationId } = req;
-    const creditOrders = await Order.find({
-      restaurantId,
-      ...(locationId ? { locationId } : {}),
-      // paymentMethod: 'credit' alone catches legacy orders whose status
-      // field predates this enum, but a refunded order keeps that same
-      // paymentMethod from before the refund — status is what actually
-      // reflects the ledger-relevant state now, so it always wins here.
-      status: { $ne: 'refunded' },
-      $or: [{ paymentMethod: 'credit' }, { status: { $in: ['credit', 'unsettled', 'settled'] } }],
-    });
+    const [creditOrders, currency] = await Promise.all([
+      Order.find({
+        restaurantId,
+        ...(locationId ? { locationId } : {}),
+        // paymentMethod: 'credit' alone catches legacy orders whose status
+        // field predates this enum, but a refunded order keeps that same
+        // paymentMethod from before the refund — status is what actually
+        // reflects the ledger-relevant state now, so it always wins here.
+        status: { $ne: 'refunded' },
+        $or: [{ paymentMethod: 'credit' }, { status: { $in: ['credit', 'unsettled', 'settled'] } }],
+      }),
+      getCurrencySymbol(restaurantId, locationId),
+    ]);
 
     const customerMap = {};
 
@@ -55,7 +59,7 @@ export async function getCreditLedger(req, res) {
         order.paymentHistory.forEach((log) => {
           const dateStr = new Date(log.createdAt).toLocaleDateString();
           customerMap[key].notesHistory.push(
-            `Paid Rs. ${log.amount.toLocaleString()} on ${dateStr}${log.note ? ` (${log.note})` : ''}`
+            `Paid ${currency} ${log.amount.toLocaleString()} on ${dateStr}${log.note ? ` (${log.note})` : ''}`
           );
         });
       }
@@ -131,10 +135,11 @@ export async function partialCreditPay(req, res) {
       await order.save();
     }
 
+    const currency = await getCurrencySymbol(restaurantId, locationId);
     await logAudit(
       restaurantId,
       req.user,
-      `recorded a partial payment of Rs. ${payAmount.toLocaleString()} for ${customerName || customerPhone}`,
+      `recorded a partial payment of ${currency} ${payAmount.toLocaleString()} for ${customerName || customerPhone}`,
       locationId
     );
     emitChange('order');
@@ -173,10 +178,11 @@ export async function fullSettleCredit(req, res) {
     }
 
     if (creditOrders.length > 0) {
+      const currency = await getCurrencySymbol(restaurantId, locationId);
       await logAudit(
         restaurantId,
         req.user,
-        `settled a full credit balance of Rs. ${totalSettled.toLocaleString()} for ${customerName || customerPhone}`,
+        `settled a full credit balance of ${currency} ${totalSettled.toLocaleString()} for ${customerName || customerPhone}`,
         locationId
       );
     }

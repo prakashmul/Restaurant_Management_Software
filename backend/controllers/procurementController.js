@@ -8,6 +8,7 @@ import User from '../models/User.js';
 import { emitChange } from '../realtime/socket.js';
 import { logAudit } from '../services/auditService.js';
 import { attachStockQuantities } from './inventoryController.js';
+import { getCurrencySymbol } from '../utils/currency.js';
 
 const ALLOWED_TRANSITIONS = {
   draft: ['sent'],
@@ -237,9 +238,10 @@ export async function updatePurchaseOrderStatus(req, res) {
       updatedPo = po;
     });
 
+    const currency = await getCurrencySymbol(restaurantId, locationId);
     const auditMessages = {
-      sent: `sent purchase order to ${updatedPo.vendorName} (Rs. ${updatedPo.totalAmount.toLocaleString()})`,
-      received: `received purchase order from ${updatedPo.vendorName} — Rs. ${updatedPo.totalAmount.toLocaleString()}, added to inventory`,
+      sent: `sent purchase order to ${updatedPo.vendorName} (${currency} ${updatedPo.totalAmount.toLocaleString()})`,
+      received: `received purchase order from ${updatedPo.vendorName} — ${currency} ${updatedPo.totalAmount.toLocaleString()}, added to inventory`,
       reconciled: `reconciled purchase order from ${updatedPo.vendorName}`,
     };
     await logAudit(restaurantId, req.user, auditMessages[updatedPo.status], locationId);

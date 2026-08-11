@@ -16,10 +16,6 @@ const orderItemSchema = new mongoose.Schema({
   // (not per-order) so a ticket with multiple courses can show partial
   // progress instead of only flipping when everything is done at once.
   bumped: { type: Boolean, default: false },
-  // Split-by-seat billing — which diner this line belongs to. null means
-  // unassigned/shared (e.g. a starter for the table), which the per-seat
-  // breakdown in TableDetailModal.tsx groups separately from numbered seats.
-  seatNumber: { type: Number, default: null },
 });
 
 const paymentLogSchema = new mongoose.Schema({

@@ -11,6 +11,7 @@ import { attachStockQuantities } from './inventoryController.js';
 import { findOrCreateCustomer } from '../services/customerService.js';
 import { logAudit } from '../services/auditService.js';
 import { toCsv } from '../utils/csv.js';
+import { getCurrencySymbol } from '../utils/currency.js';
 
 // Falls back to 8% if the restaurant somehow has no rate configured (should
 // never happen — Restaurant.taxRatePercent defaults to 8) rather than
@@ -156,7 +157,6 @@ export async function saveOrder(req, res) {
         // same order's own items, so a previously-bumped/seat-assigned line
         // survives re-saving the order to add more items) rather than reset.
         bumped: Boolean(item.bumped),
-        seatNumber: item.seatNumber ?? null,
       }));
 
       const subtotal = formattedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -331,26 +331,32 @@ export async function creditOrder(req, res) {
 }
 
 // There's no real payment gateway (no card/wallet processor is wired up),
-// so a refund is an internal ledger reversal only: it restores the stock
-// deducted at payment/credit time and moves the order to 'refunded', which
-// simply drops it out of every revenue and credit-ledger query (those all
-// filter on the specific statuses that mean "money is owed or was
-// collected" — see SOLD_STATUSES/OUTSTANDING_STATUSES across the reporting
-// controllers) — no separate "reverse the credit balance" step is needed
-// since nothing about a customer's balance is stored outside these orders.
-// Only orders where money/inventory were already committed can be
-// refunded; a still-pending order has neither yet, so it's voided instead
-// (see cancelTableOrder/deleteOrder above).
+// so a refund is an internal ledger reversal only. It supports partial
+// amounts — refundHistory is an array precisely so several partial refunds
+// can accumulate against one order over time. Only once the cumulative
+// refunded amount reaches the order's total does it move to 'refunded'
+// (which drops it out of every revenue and credit-ledger query — see
+// SOLD_STATUSES/OUTSTANDING_STATUSES across the reporting controllers) and
+// have its stock restored; a partial refund is a money-only adjustment (no
+// clean way to know *which* items a partial dollar amount corresponds to),
+// so it leaves the order's status and inventory alone. Only orders where
+// money/inventory were already committed can be refunded; a still-pending
+// order has neither yet, so it's voided instead (see cancelTableOrder/
+// deleteOrder above).
 const REFUNDABLE_STATUSES = ['paid', 'credit', 'unsettled', 'settled'];
+const EPSILON = 0.01;
 
 export async function refundOrder(req, res) {
   const { id } = req.params;
-  const { reason } = req.body;
+  const { reason, amount } = req.body;
   const { restaurantId, locationId } = req;
 
   const session = await mongoose.startSession();
   try {
+    const currency = await getCurrencySymbol(restaurantId, locationId);
     let order;
+    let refundAmount;
+    let isFullRefund;
     await session.withTransaction(async () => {
       order = await Order.findOne({ _id: id, restaurantId, locationId }).session(session);
       if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
@@ -361,20 +367,45 @@ export async function refundOrder(req, res) {
         );
       }
 
-      await restoreStockForOrder(order, `Refund (${req.user.name || req.user.email})`, session);
+      const alreadyRefunded = (order.refundHistory || []).reduce((sum, r) => sum + (r.amount || 0), 0);
+      const maxRefundable = Math.max(0, order.total - alreadyRefunded);
+      if (maxRefundable <= EPSILON) {
+        throw Object.assign(new Error('This order has already been fully refunded.'), { status: 400 });
+      }
 
-      const refundAmount = order.total;
-      order.status = 'refunded';
-      order.remainingBalance = 0;
-      order.refundedAt = new Date();
+      refundAmount = amount != null ? Number(amount) : maxRefundable;
+      if (!(refundAmount > 0)) {
+        throw Object.assign(new Error('Enter a refund amount greater than 0.'), { status: 400 });
+      }
+      if (refundAmount > maxRefundable + EPSILON) {
+        throw Object.assign(
+          new Error(`Only ${currency} ${maxRefundable.toFixed(2)} is left to refund on this order.`),
+          { status: 400 }
+        );
+      }
+      // Clamp so a client-side rounding blip can never leave a fractional
+      // paisa of "still refundable" that would block the order from ever
+      // reaching isFullRefund.
+      refundAmount = Math.min(refundAmount, maxRefundable);
+      isFullRefund = maxRefundable - refundAmount <= EPSILON;
+
       order.refundHistory.push({ amount: refundAmount, reason, refundedBy: req.user.name || req.user.email });
+      order.remainingBalance = Math.max(0, (order.remainingBalance || 0) - refundAmount);
+
+      if (isFullRefund) {
+        await restoreStockForOrder(order, `Refund (${req.user.name || req.user.email})`, session);
+        order.status = 'refunded';
+        order.remainingBalance = 0;
+        order.refundedAt = new Date();
+      }
+
       await order.save({ session });
     });
 
     await logAudit(
       restaurantId,
       req.user,
-      `refunded order #${order._id.toString().slice(-6)} for Rs. ${order.total.toLocaleString()} (${reason})`,
+      `refunded ${currency} ${refundAmount.toLocaleString()}${isFullRefund ? '' : ' (partial)'} on order #${order._id.toString().slice(-6)} (${reason})`,
       locationId
     );
 
@@ -468,8 +499,9 @@ export async function applyDiscount(req, res) {
     recomputeOrderTotals(order, taxRate);
     await order.save();
 
+    const currency = await getCurrencySymbol(restaurantId, locationId);
     const description = type
-      ? `applied a ${type === 'percent' ? `${value}%` : `Rs. ${value}`} discount to an order${reason ? ` (${reason})` : ''}`
+      ? `applied a ${type === 'percent' ? `${value}%` : `${currency} ${value}`} discount to an order${reason ? ` (${reason})` : ''}`
       : 'removed a discount from an order';
     await logAudit(restaurantId, req.user, description, locationId);
 
@@ -538,9 +570,10 @@ export async function redeemLoyaltyPoints(req, res) {
       return res.status(400).json({ message: 'Remove the existing discount before redeeming loyalty points.' });
     }
 
-    const [customer, restaurant] = await Promise.all([
+    const [customer, restaurant, currency] = await Promise.all([
       Customer.findOne({ _id: order.customerId, restaurantId }),
       Restaurant.findById(restaurantId).select('loyaltyEarnRatePerRs loyaltyPointValueRs'),
+      getCurrencySymbol(restaurantId, locationId),
     ]);
     if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
@@ -578,7 +611,7 @@ export async function redeemLoyaltyPoints(req, res) {
     await logAudit(
       restaurantId,
       req.user,
-      `redeemed ${points} loyalty point(s) (Rs. ${discountAmount.toFixed(2)}) for ${customer.name}`,
+      `redeemed ${points} loyalty point(s) (${currency} ${discountAmount.toFixed(2)}) for ${customer.name}`,
       locationId
     );
 
@@ -619,8 +652,9 @@ export async function applyTip(req, res) {
     recomputeOrderTotals(order, taxRate);
     await order.save();
 
+    const currency = await getCurrencySymbol(restaurantId, locationId);
     const description = type
-      ? `added a ${type === 'percent' ? `${value}%` : `Rs. ${value}`} tip to an order`
+      ? `added a ${type === 'percent' ? `${value}%` : `${currency} ${value}`} tip to an order`
       : 'removed a tip from an order';
     await logAudit(restaurantId, req.user, description, locationId);
 

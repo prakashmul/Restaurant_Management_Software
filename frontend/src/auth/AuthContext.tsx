@@ -33,6 +33,7 @@ export interface AuthLocation {
   name: string;
   address?: string;
   phone?: string;
+  currency?: string;
   isActive?: boolean;
   geofence?: {
     latitude: number | null;

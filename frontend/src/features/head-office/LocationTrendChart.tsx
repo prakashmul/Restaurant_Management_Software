@@ -10,6 +10,14 @@ interface LocationTrendChartProps {
 }
 
 export const LocationTrendChart: React.FC<LocationTrendChartProps> = ({ locations }) => {
+  // Each line is one location, each of which may bill in its own currency —
+  // the tooltip formatter's `name` arg is the Line's dataKey (loc.name), so
+  // this looks up the right symbol per line instead of assuming one shared
+  // currency for the whole chart.
+  const currencyByLocationName = useMemo(
+    () => new Map(locations.map((loc) => [loc.name, loc.currency || 'Rs.'])),
+    [locations]
+  );
   const data = useMemo(() => {
     const byDate = new Map<string, Record<string, string | number>>();
     for (const loc of locations) {
@@ -46,7 +54,10 @@ export const LocationTrendChart: React.FC<LocationTrendChartProps> = ({ location
               <Tooltip
                 contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, fontSize: 12 }}
                 labelStyle={{ color: '#cbd5e1' }}
-                formatter={(value: number) => [`Rs. ${value.toLocaleString()}`, '']}
+                formatter={(value: number, name: string) => [
+                  `${currencyByLocationName.get(name) || 'Rs.'} ${value.toLocaleString()}`,
+                  name,
+                ]}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {locations.map((loc, i) => (

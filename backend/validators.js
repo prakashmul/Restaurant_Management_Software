@@ -140,7 +140,6 @@ const orderItemInputSchema = z.object({
   price: z.coerce.number().optional(),
   quantity: z.coerce.number().optional(),
   bumped: z.boolean().optional(),
-  seatNumber: z.coerce.number().int().positive().nullable().optional(),
 });
 
 export const saveOrderSchema = z.object({
@@ -177,6 +176,10 @@ export const applyDiscountSchema = z
 
 export const refundOrderSchema = z.object({
   reason: z.string().trim().min(1, 'A reason is required to refund an order.').max(300),
+  // Omitted means "refund whatever is still refundable" (a full refund, or
+  // whatever remains after earlier partial refunds) — see refundOrder in
+  // ordersController.js.
+  amount: z.coerce.number().positive().optional(),
 });
 
 export const applyTipSchema = z
@@ -236,12 +239,14 @@ export const createLocationSchema = z.object({
   name: z.string().trim().min(1, 'Location name is required.'),
   address: z.string().trim().optional().default(''),
   phone: z.string().trim().optional().default(''),
+  currency: z.string().trim().min(1).max(10).optional(),
 });
 
 export const updateLocationSchema = z.object({
   name: z.string().trim().min(1).optional(),
   address: z.string().trim().optional(),
   phone: z.string().trim().optional(),
+  currency: z.string().trim().min(1).max(10).optional(),
   isActive: z.boolean().optional(),
   geofence: z
     .object({

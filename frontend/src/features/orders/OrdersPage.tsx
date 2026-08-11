@@ -26,6 +26,7 @@ export const OrdersPage: React.FC = () => {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const { isOwner, hasPermission, currentRestaurant, currentLocation } = useAuth();
+  const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
   const REFUNDABLE_STATUSES = ['paid', 'credit', 'unsettled', 'settled'];
 
   // Helper to convert any Date or ISO string into local YYYY-MM-DD
@@ -167,17 +168,23 @@ export const OrdersPage: React.FC = () => {
       const items = order.items || [];
       const subtotal = order.subtotal ?? items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 0), 0);
       const totalAmount = order.total ?? subtotal;
+      const refunded = (order.refundHistory || []).reduce((sum, r) => sum + (r.amount || 0), 0);
+      const netAmount = Math.max(0, totalAmount - refunded);
       const status = (order.status || 'pending').toLowerCase();
       const method = ((order as any).paymentMethod || '').toLowerCase();
 
       // Direct Sales
       if (status === 'paid' && method !== 'credit') {
-        todaysSale += totalAmount;
+        todaysSale += netAmount;
       }
 
-      // Credit Paid
-      if (status === 'settled') {
-        creditPaid += totalAmount;
+      // Credit Paid — count actual payments received against credit orders
+      // (partial or full), not just orders that reached full settlement,
+      // so a partial credit payment shows up immediately instead of only
+      // once the whole balance is paid off.
+      if (status === 'credit' || status === 'unsettled' || status === 'settled') {
+        const creditReceived = (order.paymentHistory || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+        creditPaid += Math.max(0, creditReceived - refunded);
       }
     });
 
@@ -231,18 +238,49 @@ export const OrdersPage: React.FC = () => {
     }
   };
 
-  const handleRefundOrder = async (orderId: string, e: React.MouseEvent) => {
+  const handleRefundOrder = async (ord: Order, e: React.MouseEvent) => {
     e.stopPropagation();
+    const orderId = ord._id || ord.id;
     if (!orderId) return;
+
+    const total = ord.total ?? 0;
+    const alreadyRefunded = (ord.refundHistory || []).reduce((sum, r) => sum + (r.amount || 0), 0);
+    const maxRefundable = Math.max(0, total - alreadyRefunded);
+    if (maxRefundable <= 0.01) {
+      alert('This order has already been fully refunded.');
+      return;
+    }
+
+    const amountStr = window.prompt(
+      `How much to refund? (up to ${currency} ${maxRefundable.toFixed(2)})`,
+      maxRefundable.toFixed(2)
+    );
+    if (amountStr === null) return;
+    const amount = Number(amountStr);
+    if (!amount || amount <= 0 || amount > maxRefundable + 0.01) {
+      alert(`Enter a valid amount up to ${currency} ${maxRefundable.toFixed(2)}.`);
+      return;
+    }
+
     const reason = window.prompt('Why is this order being refunded? (required)');
     if (reason === null) return;
     if (!reason.trim()) {
       alert('A reason is required to refund an order.');
       return;
     }
-    if (!window.confirm('This restores the order\'s deducted stock and marks it refunded. Continue?')) return;
+
+    const isFull = amount >= maxRefundable - 0.01;
+    if (
+      !window.confirm(
+        isFull
+          ? "This restores the order's deducted stock and marks it refunded. Continue?"
+          : `Refund ${currency} ${amount.toFixed(2)} from this order? It stays active with the remaining balance.`
+      )
+    )
+      return;
+
     try {
-      const updated = await posApi.refundOrder(orderId, reason.trim());
+      const updated = await posApi.refundOrder(orderId, reason.trim(), amount);
       setOrders((prev) => prev.map((o) => ((o._id || o.id) === orderId ? updated : o)));
     } catch (err: any) {
       alert(err?.response?.data?.message || 'Failed to refund order.');
@@ -317,15 +355,15 @@ export const OrdersPage: React.FC = () => {
                   <tr>
                     <td>${escapeHtml(item.name)}</td>
                     <td class="text-right">${item.quantity}</td>
-                    <td class="text-right">Rs.${(item.price || 0).toFixed(2)}</td>
-                    <td class="text-right">Rs.${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
+                    <td class="text-right">${currency}${(item.price || 0).toFixed(2)}</td>
+                    <td class="text-right">${currency}${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
             <div class="totals">
-              <div><span>Subtotal:</span><span>Rs.${subtotal.toFixed(2)}</span></div>
-              <div class="grand-total"><span>TOTAL:</span><span>Rs.${total.toFixed(2)}</span></div>
+              <div><span>Subtotal:</span><span>${currency}${subtotal.toFixed(2)}</span></div>
+              <div class="grand-total"><span>TOTAL:</span><span>${currency}${total.toFixed(2)}</span></div>
             </div>
             <div class="footer">
               <p>Thank you!!! Do visit us again</p>
@@ -376,7 +414,7 @@ export const OrdersPage: React.FC = () => {
                   : 'Selected Date Sales'}
               </span>
               <div className="text-xl font-bold font-mono text-slate-100">
-                Rs.{financialSummary.todaysSale.toFixed(2)}
+                {currency}{financialSummary.todaysSale.toFixed(2)}
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
@@ -388,7 +426,7 @@ export const OrdersPage: React.FC = () => {
             <div className="space-y-1">
               <span className="text-xs text-slate-400 font-medium">Credit Paid</span>
               <div className="text-xl font-bold font-mono text-emerald-400">
-                Rs.{financialSummary.creditPaid.toFixed(2)}
+                {currency}{financialSummary.creditPaid.toFixed(2)}
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
@@ -400,7 +438,7 @@ export const OrdersPage: React.FC = () => {
             <div className="space-y-1">
               <span className="text-xs text-slate-400 font-medium">Total Amount Received</span>
               <div className="text-xl font-bold font-mono text-cyan-400">
-                Rs.{financialSummary.totalReceived.toFixed(2)}
+                {currency}{financialSummary.totalReceived.toFixed(2)}
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
@@ -515,6 +553,9 @@ export const OrdersPage: React.FC = () => {
               }
 
               const canRefund = hasPermission('orders.refund') && REFUNDABLE_STATUSES.includes(statusStr);
+              const totalRefunded = (ord.refundHistory || []).reduce((sum, r) => sum + (r.amount || 0), 0);
+              const netTotal = Math.max(0, total - totalRefunded);
+              const isPartiallyRefunded = totalRefunded > 0 && statusStr !== 'refunded';
 
               return (
                 <div key={orderId} className="bg-slate-900 transition hover:bg-slate-800/30">
@@ -551,8 +592,15 @@ export const OrdersPage: React.FC = () => {
                         {ord.status || 'pending'}
                       </span>
 
-                      <div className="font-mono text-sm font-bold text-slate-100 min-w-[80px] text-right">
-                        Rs.{total.toFixed(2)}
+                      <div className="min-w-[80px] text-right">
+                        <div className="font-mono text-sm font-bold text-slate-100">
+                          {currency}{(isPartiallyRefunded ? netTotal : total).toFixed(2)}
+                        </div>
+                        {isPartiallyRefunded && (
+                          <div className="text-[9px] text-amber-400 font-semibold whitespace-nowrap">
+                            {currency}{totalRefunded.toFixed(2)} refunded
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1">
@@ -565,7 +613,7 @@ export const OrdersPage: React.FC = () => {
                         </button>
                         {canRefund && (
                           <button
-                            onClick={(e) => handleRefundOrder(orderId, e)}
+                            onClick={(e) => handleRefundOrder(ord, e)}
                             className="p-3 sm:p-2 hover:bg-amber-500/10 rounded-lg text-slate-400 hover:text-amber-400 transition"
                             title="Refund Order"
                           >
@@ -587,13 +635,19 @@ export const OrdersPage: React.FC = () => {
                   {isExpanded && (
                     <div className="p-4 bg-slate-950/60 border-t border-slate-800/80 space-y-4">
                       {ord.refundHistory && ord.refundHistory.length > 0 && (
-                        <div className="flex items-start gap-2 bg-slate-800/60 border border-slate-700 p-2.5 rounded-xl text-xs text-slate-300">
-                          <RotateCcw className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-                          <span>
-                            <strong>Refunded:</strong> Rs.{ord.refundHistory[0].amount.toFixed(2)} —{' '}
-                            {ord.refundHistory[0].reason}
-                            {ord.refundHistory[0].refundedBy ? ` (by ${ord.refundHistory[0].refundedBy})` : ''}
-                          </span>
+                        <div className="space-y-1.5">
+                          {ord.refundHistory.map((r, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-start gap-2 bg-slate-800/60 border border-slate-700 p-2.5 rounded-xl text-xs text-slate-300"
+                            >
+                              <RotateCcw className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                              <span>
+                                <strong>Refunded:</strong> {currency}{r.amount.toFixed(2)} — {r.reason}
+                                {r.refundedBy ? ` (by ${r.refundedBy})` : ''}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       )}
                       {customerName && (
@@ -613,7 +667,7 @@ export const OrdersPage: React.FC = () => {
                               <span>
                                 {item.quantity}x {item.name}
                               </span>
-                              <span>Rs.{((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                              <span>{currency}{((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
                             </div>
                           ))}
                         </div>
@@ -622,12 +676,20 @@ export const OrdersPage: React.FC = () => {
                       <div className="pt-3 border-t border-slate-800/80 flex flex-col items-end text-xs font-mono space-y-1">
                         <div className="flex justify-between w-full max-w-xs text-slate-400">
                           <span>Subtotal:</span>
-                          <span>Rs.{subtotal.toFixed(2)}</span>
+                          <span>{currency}{subtotal.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between w-full max-w-xs font-bold text-sm text-slate-100 pt-1 border-t border-slate-800">
                           <span>Total Order Amount:</span>
-                          <span className="text-emerald-400">Rs.{total.toFixed(2)}</span>
+                          <span className={isPartiallyRefunded ? 'text-slate-500 line-through' : 'text-emerald-400'}>
+                            {currency}{total.toFixed(2)}
+                          </span>
                         </div>
+                        {isPartiallyRefunded && (
+                          <div className="flex justify-between w-full max-w-xs font-bold text-sm">
+                            <span className="text-slate-100">Net After Refund:</span>
+                            <span className="text-amber-400">{currency}{netTotal.toFixed(2)}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

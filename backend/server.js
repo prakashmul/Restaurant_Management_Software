@@ -7,6 +7,7 @@ import { logger } from './middleware/logger.js';
 import { initSocket } from './realtime/socket.js';
 import { migrateToMultiTenant } from './services/tenantMigrationService.js';
 import { migrateToLocations } from './services/locationMigrationService.js';
+import { migrateLocationCurrency } from './services/locationCurrencyMigrationService.js';
 import { migrateToLocationStock } from './services/inventoryStockMigrationService.js';
 import { migrateToRoles, syncBuiltInRolePermissions } from './services/roleMigrationService.js';
 import { migrateOrdersToCustomers } from './services/customerService.js';
@@ -41,6 +42,7 @@ mongoose
     logger.info('Connected to MongoDB!');
     await migrateToMultiTenant();
     await migrateToLocations();
+    await migrateLocationCurrency();
     await migrateToLocationStock();
     await migrateToRoles();
     await syncBuiltInRolePermissions();

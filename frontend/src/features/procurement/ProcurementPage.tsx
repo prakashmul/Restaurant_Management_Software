@@ -27,7 +27,8 @@ function extractErrorMessage(err: unknown, fallback: string): string {
 }
 
 export const ProcurementPage: React.FC = () => {
-  const { isOwner, currentUser, currentLocation } = useAuth();
+  const { isOwner, currentUser, currentLocation, currentRestaurant } = useAuth();
+  const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
   const canManage = isOwner || currentUser?.role === 'Manager';
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -347,7 +348,7 @@ export const ProcurementPage: React.FC = () => {
                         <div className="text-xs font-bold text-slate-200 mt-0.5">{po.vendorName}</div>
                         <div className="text-[10px] text-slate-500 mt-1">{po.items.length} item(s)</div>
                         <div className="flex items-center justify-between mt-2">
-                          <span className="text-xs font-bold tabular-nums">Rs. {po.totalAmount.toFixed(0)}</span>
+                          <span className="text-xs font-bold tabular-nums">{currency} {po.totalAmount.toFixed(0)}</span>
                           {canManage && (
                             <div className="flex items-center gap-1">
                               {po.status === 'draft' && (
@@ -513,7 +514,7 @@ export const ProcurementPage: React.FC = () => {
                           step="any"
                           value={line.unitCost}
                           onChange={(e) => updateLine(idx, 'unitCost', e.target.value)}
-                          placeholder="Unit Rs."
+                          placeholder={`Unit ${currency}`}
                           className="flex-1 sm:flex-none min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                         />
                         {poLines.length > 1 && (

@@ -70,7 +70,8 @@ function QuadrantChart({ dishes, medianUnitsSold, medianMargin }: { dishes: Cost
 }
 
 export const RecipeCostingPage: React.FC = () => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, currentRestaurant, currentLocation } = useAuth();
+  const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
   const canView = hasPermission('recipecosting.view');
   const [report, setReport] = useState<MenuEngineeringReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,7 +158,7 @@ export const RecipeCostingPage: React.FC = () => {
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
               <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Median margin</div>
-              <div className="text-xl font-bold mt-1">Rs. {report.medianMargin.toFixed(0)}</div>
+              <div className="text-xl font-bold mt-1">{currency} {report.medianMargin.toFixed(0)}</div>
             </div>
           </div>
 
@@ -197,7 +198,7 @@ export const RecipeCostingPage: React.FC = () => {
                 <div key={dish.id} className="px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-slate-200 truncate">{dish.name}</span>
-                    <span className="text-xs font-bold tabular-nums shrink-0">Rs. {dish.price.toFixed(0)}</span>
+                    <span className="text-xs font-bold tabular-nums shrink-0">{currency} {dish.price.toFixed(0)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-1 text-[10.5px] text-slate-400">
                     <span
@@ -241,9 +242,9 @@ export const RecipeCostingPage: React.FC = () => {
                   {sortedDishes.map((dish) => (
                     <tr key={dish.id} className="hover:bg-slate-800/30 transition">
                       <td className="px-5 py-3 font-semibold text-slate-200">{dish.name}</td>
-                      <td className="px-5 py-3 text-right tabular-nums">Rs. {dish.price.toFixed(0)}</td>
+                      <td className="px-5 py-3 text-right tabular-nums">{currency} {dish.price.toFixed(0)}</td>
                       <td className="px-5 py-3 text-right tabular-nums text-slate-400">
-                        {dish.ingredientCost !== null ? `Rs. ${dish.ingredientCost.toFixed(0)}` : '—'}
+                        {dish.ingredientCost !== null ? `${currency} ${dish.ingredientCost.toFixed(0)}` : '—'}
                       </td>
                       <td
                         className="px-5 py-3 text-right tabular-nums font-semibold"

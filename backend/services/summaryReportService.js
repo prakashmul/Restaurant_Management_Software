@@ -40,7 +40,7 @@ async function sendLocationDailySummary(location) {
   const totalSales = orders.reduce((sum, o) => sum + (o.total || 0), 0);
 
   const [restaurant, recipients] = await Promise.all([
-    Restaurant.findById(location.restaurantId).select('name currency'),
+    Restaurant.findById(location.restaurantId).select('name'),
     StaffMembership.find({
       restaurantId: location.restaurantId,
       role: { $in: ['Owner', 'Manager'] },
@@ -50,7 +50,7 @@ async function sendLocationDailySummary(location) {
   if (recipients.length === 0) return;
 
   const restaurantName = restaurant?.name || 'Restaurant Management Software';
-  const currency = restaurant?.currency || 'Rs.';
+  const currency = location.currency || 'Rs.';
   const dateLabel = startOfDay.toLocaleDateString();
   const html = `<p>Summary for ${location.name} — ${dateLabel}</p><ul><li>Orders: ${orders.length}</li><li>Total sales: ${currency} ${totalSales.toFixed(2)}</li></ul>`;
 

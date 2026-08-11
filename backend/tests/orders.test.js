@@ -576,6 +576,71 @@ describe('refunds', () => {
     const afterLedger = await auth(request(app).get('/api/credits'));
     expect(afterLedger.body.some((c) => c.phone === '9800000605')).toBe(false);
   });
+
+  it('accepts a partial refund amount: order stays active, stock is not restored yet', async () => {
+    const { tableId, menuItemId, inventoryItemId } = await setupOrderFixtures(606, 10);
+    const saved = await auth(request(app).post('/api/orders/save')).send({
+      tableId,
+      items: [{ menuItemId, name: 'Dish', price: 100, quantity: 1 }],
+    });
+    const orderId = saved.body._id;
+    await auth(request(app).post(`/api/orders/${orderId}/pay`)).send({ paymentMethod: 'cash' });
+
+    const refundRes = await auth(request(app).patch(`/api/orders/${orderId}/refund`)).send({
+      reason: 'Goodwill discount',
+      amount: 20,
+    });
+    expect(refundRes.status).toBe(200);
+    expect(refundRes.body.status).toBe('paid');
+    expect(refundRes.body.refundHistory.length).toBe(1);
+    expect(refundRes.body.refundHistory[0].amount).toBe(20);
+
+    const invRes = await auth(request(app).get('/api/inventory'));
+    const inv = invRes.body.find((i) => i._id === inventoryItemId);
+    expect(inv.totalQuantity).toBe(8); // 10 - 2 deducted at payment, untouched by the partial refund
+  });
+
+  it('completing the remaining balance via a second partial refund fully refunds the order', async () => {
+    const { tableId, menuItemId, inventoryItemId } = await setupOrderFixtures(607, 10);
+    const saved = await auth(request(app).post('/api/orders/save')).send({
+      tableId,
+      items: [{ menuItemId, name: 'Dish', price: 100, quantity: 1 }],
+    });
+    const orderId = saved.body._id;
+    const payRes = await auth(request(app).post(`/api/orders/${orderId}/pay`)).send({ paymentMethod: 'cash' });
+    const total = payRes.body.order.total;
+
+    await auth(request(app).patch(`/api/orders/${orderId}/refund`)).send({ reason: 'Partial 1', amount: 20 });
+    const secondRefund = await auth(request(app).patch(`/api/orders/${orderId}/refund`)).send({
+      reason: 'Rest of it',
+      amount: total - 20,
+    });
+
+    expect(secondRefund.status).toBe(200);
+    expect(secondRefund.body.status).toBe('refunded');
+    expect(secondRefund.body.remainingBalance).toBe(0);
+    expect(secondRefund.body.refundHistory.length).toBe(2);
+
+    const invRes = await auth(request(app).get('/api/inventory'));
+    const inv = invRes.body.find((i) => i._id === inventoryItemId);
+    expect(inv.totalQuantity).toBe(10); // fully restored once cumulative refunds reach the total
+  });
+
+  it('rejects a refund amount greater than what is still refundable', async () => {
+    const { tableId, menuItemId } = await setupOrderFixtures(608, 10);
+    const saved = await auth(request(app).post('/api/orders/save')).send({
+      tableId,
+      items: [{ menuItemId, name: 'Dish', price: 100, quantity: 1 }],
+    });
+    const orderId = saved.body._id;
+    await auth(request(app).post(`/api/orders/${orderId}/pay`)).send({ paymentMethod: 'cash' });
+
+    const res = await auth(request(app).patch(`/api/orders/${orderId}/refund`)).send({
+      reason: 'Too much',
+      amount: 999999,
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('kitchen display', () => {
@@ -656,37 +721,12 @@ describe('kitchen display', () => {
     );
     expect(res.status).toBe(404);
   });
-});
-
-describe('split-by-seat billing', () => {
-  it('saves and returns each item\'s seatNumber', async () => {
-    const { tableId, menuItemId } = await setupOrderFixtures(706, 10);
-    const saved = await auth(request(app).post('/api/orders/save')).send({
-      tableId,
-      items: [
-        { menuItemId, name: 'Dish', price: 10, quantity: 1, seatNumber: 1 },
-        { menuItemId, name: 'Dish', price: 10, quantity: 1, seatNumber: 2 },
-      ],
-    });
-    expect(saved.status).toBe(200);
-    expect(saved.body.items[0].seatNumber).toBe(1);
-    expect(saved.body.items[1].seatNumber).toBe(2);
-  });
-
-  it('defaults seatNumber to null when omitted', async () => {
-    const { tableId, menuItemId } = await setupOrderFixtures(707, 10);
-    const saved = await auth(request(app).post('/api/orders/save')).send({
-      tableId,
-      items: [{ menuItemId, name: 'Dish', price: 10, quantity: 1 }],
-    });
-    expect(saved.body.items[0].seatNumber).toBe(null);
-  });
 
   it('preserves a bumped item\'s status when the order is re-saved with an added item', async () => {
     const { tableId, menuItemId } = await setupOrderFixtures(708, 10);
     const saved = await auth(request(app).post('/api/orders/save')).send({
       tableId,
-      items: [{ menuItemId, name: 'Dish', price: 10, quantity: 1, seatNumber: 1 }],
+      items: [{ menuItemId, name: 'Dish', price: 10, quantity: 1 }],
     });
     const orderId = saved.body._id;
     const itemId = saved.body.items[0]._id;
@@ -701,7 +741,7 @@ describe('split-by-seat billing', () => {
       tableId,
       items: [
         { ...bumped.body.items[0], menuItemId },
-        { menuItemId, name: 'Dish', price: 10, quantity: 1, seatNumber: 2 },
+        { menuItemId, name: 'Dish', price: 10, quantity: 1 },
       ],
     });
     expect(resaved.status).toBe(200);

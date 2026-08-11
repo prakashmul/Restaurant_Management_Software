@@ -126,6 +126,7 @@ export async function getSummary(req, res) {
         id: location._id,
         name: location.name,
         address: location.address,
+        currency: location.currency || 'Rs.',
         isActive: location.isActive,
         todaySales,
         sales7d,

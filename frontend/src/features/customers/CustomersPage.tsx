@@ -11,7 +11,8 @@ function formatDate(iso: string | null): string {
 }
 
 export const CustomersPage: React.FC = () => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, currentRestaurant, currentLocation } = useAuth();
+  const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
   const canView = hasPermission('customers');
 
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);
@@ -151,13 +152,13 @@ export const CustomersPage: React.FC = () => {
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-slate-200 truncate">{c.name}</span>
                     <span className="text-xs font-bold tabular-nums text-slate-200 shrink-0">
-                      Rs. {c.lifetimeSpend.toFixed(0)}
+                      {currency} {c.lifetimeSpend.toFixed(0)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-1 text-[10.5px] text-slate-400">
                     <span className="truncate">{c.phone || '—'} · {c.ordersCount} orders · {formatDate(c.lastOrderAt)}</span>
                     {c.outstandingCredit > 0 ? (
-                      <span className="text-amber-400 font-semibold shrink-0">Owes Rs. {c.outstandingCredit.toFixed(0)}</span>
+                      <span className="text-amber-400 font-semibold shrink-0">Owes {currency} {c.outstandingCredit.toFixed(0)}</span>
                     ) : (
                       <span className="text-amber-400 font-semibold shrink-0">{c.pointsBalance} pts</span>
                     )}
@@ -191,10 +192,10 @@ export const CustomersPage: React.FC = () => {
                       <td className="px-5 py-3 text-slate-400">{c.phone || '—'}</td>
                       <td className="px-5 py-3 text-right tabular-nums">{c.ordersCount}</td>
                       <td className="px-5 py-3 text-right tabular-nums font-semibold text-slate-200">
-                        Rs. {c.lifetimeSpend.toFixed(0)}
+                        {currency} {c.lifetimeSpend.toFixed(0)}
                       </td>
                       <td className={`px-5 py-3 text-right tabular-nums font-semibold ${c.outstandingCredit > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
-                        Rs. {c.outstandingCredit.toFixed(0)}
+                        {currency} {c.outstandingCredit.toFixed(0)}
                       </td>
                       <td className="px-5 py-3 text-right tabular-nums font-semibold text-amber-400">
                         {c.pointsBalance}
@@ -275,12 +276,12 @@ export const CustomersPage: React.FC = () => {
                   </div>
                   <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
                     <div className="text-[9.5px] uppercase tracking-wider text-slate-500 font-semibold">Lifetime</div>
-                    <div className="text-base font-bold mt-1 tabular-nums">Rs. {detail.stats.lifetimeSpend.toFixed(0)}</div>
+                    <div className="text-base font-bold mt-1 tabular-nums">{currency} {detail.stats.lifetimeSpend.toFixed(0)}</div>
                   </div>
                   <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
                     <div className="text-[9.5px] uppercase tracking-wider text-slate-500 font-semibold">Owed</div>
                     <div className={`text-base font-bold mt-1 tabular-nums ${detail.stats.outstandingCredit > 0 ? 'text-amber-400' : ''}`}>
-                      Rs. {detail.stats.outstandingCredit.toFixed(0)}
+                      {currency} {detail.stats.outstandingCredit.toFixed(0)}
                     </div>
                   </div>
                   <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
@@ -310,7 +311,7 @@ export const CustomersPage: React.FC = () => {
                           <div className="text-[10px] text-slate-500 capitalize">{o.status}</div>
                         </div>
                         <div className="text-sm font-bold font-mono text-slate-200">
-                          Rs. {(o.total || 0).toFixed(0)}
+                          {currency} {(o.total || 0).toFixed(0)}
                         </div>
                       </div>
                     ))

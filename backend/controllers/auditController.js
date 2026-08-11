@@ -10,6 +10,10 @@ export async function listAuditLog(req, res) {
     const { actorEmail, q, startDate, endDate } = req.query;
 
     const query = { restaurantId: req.restaurantId };
+    // A location-scoped viewer sees entries tied to their own location plus
+    // organization-wide ones (locationId: null, e.g. a shared menu change)
+    // — but never another branch's location-tied entries.
+    if (req.locationId) query.$or = [{ locationId: null }, { locationId: req.locationId }];
     if (actorEmail) query.actorEmail = actorEmail;
     if (q) query.action = { $regex: escapeRegex(q), $options: 'i' };
     if (startDate || endDate) {

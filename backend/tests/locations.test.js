@@ -66,6 +66,26 @@ describe('locations', () => {
     expect(res.body.phone).toBe('555-1234');
   });
 
+  it('defaults a new location to Rs. and keeps each location\'s currency independent', async () => {
+    const mainRes = await asOwner(request(app).get('/api/locations'));
+    const main = mainRes.body.find((l) => l._id === mainLocationId);
+    const second = mainRes.body.find((l) => l._id === secondLocationId);
+    expect(main.currency).toBe('Rs.');
+    expect(second.currency).toBe('Rs.');
+
+    const updateRes = await asOwner(request(app).patch(`/api/locations/${secondLocationId}`)).send({
+      currency: '$',
+    });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.currency).toBe('$');
+
+    const afterRes = await asOwner(request(app).get('/api/locations'));
+    const mainAfter = afterRes.body.find((l) => l._id === mainLocationId);
+    const secondAfter = afterRes.body.find((l) => l._id === secondLocationId);
+    expect(mainAfter.currency).toBe('Rs.');
+    expect(secondAfter.currency).toBe('$');
+  });
+
   it('scopes tables independently per location within the same restaurant', async () => {
     // Registration already seeds one Table #1 at the Main Location, so use
     // a number that doesn't collide with it.

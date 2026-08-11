@@ -18,6 +18,7 @@ export const LocationsPage: React.FC = () => {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
+  const [currency, setCurrency] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -25,6 +26,7 @@ export const LocationsPage: React.FC = () => {
   const [editName, setEditName] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editCurrency, setEditCurrency] = useState('');
 
   const loadLocations = async () => {
     try {
@@ -57,6 +59,7 @@ export const LocationsPage: React.FC = () => {
     setName('');
     setAddress('');
     setPhone('');
+    setCurrency('');
     setError('');
   };
 
@@ -69,7 +72,12 @@ export const LocationsPage: React.FC = () => {
     }
     try {
       setIsSaving(true);
-      await posApi.createLocation({ name: name.trim(), address: address.trim(), phone: phone.trim() });
+      await posApi.createLocation({
+        name: name.trim(),
+        address: address.trim(),
+        phone: phone.trim(),
+        currency: currency.trim() || undefined,
+      });
       resetCreateForm();
       setIsCreateOpen(false);
       await loadLocations();
@@ -85,6 +93,7 @@ export const LocationsPage: React.FC = () => {
     setEditName(loc.name);
     setEditAddress(loc.address || '');
     setEditPhone(loc.phone || '');
+    setEditCurrency(loc.currency || '');
   };
 
   const saveEdit = async (loc: Location) => {
@@ -93,12 +102,20 @@ export const LocationsPage: React.FC = () => {
         name: editName.trim(),
         address: editAddress.trim(),
         phone: editPhone.trim(),
+        currency: editCurrency.trim() || undefined,
       });
       setEditingId(null);
       await loadLocations();
-      // Keep the switcher's label in sync if we just renamed the active location.
+      // Keep the switcher's label (and its currency) in sync if we just
+      // edited the active location.
       if (currentLocation?.id === loc._id) {
-        setCurrentLocation({ ...currentLocation, name: updated.name, address: updated.address, phone: updated.phone });
+        setCurrentLocation({
+          ...currentLocation,
+          name: updated.name,
+          address: updated.address,
+          phone: updated.phone,
+          currency: updated.currency,
+        });
       }
     } catch (err) {
       alert(extractErrorMessage(err, 'Failed to update location.'));
@@ -161,6 +178,12 @@ export const LocationsPage: React.FC = () => {
                     placeholder="Phone"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
+                  <input
+                    value={editCurrency}
+                    onChange={(e) => setEditCurrency(e.target.value)}
+                    placeholder="Currency symbol (e.g. Rs.)"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  />
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => saveEdit(loc)}
@@ -190,6 +213,7 @@ export const LocationsPage: React.FC = () => {
                       </div>
                       <div className="text-xs text-slate-500 mt-1">{loc.address || 'No address set'}</div>
                       <div className="text-xs text-slate-500">{loc.phone || 'No phone set'}</div>
+                      <div className="text-xs text-slate-500">Currency: {loc.currency || 'Rs.'}</div>
                     </div>
                     <button onClick={() => handleDelete(loc)} className="text-slate-500 hover:text-rose-400 transition p-2 sm:p-1">
                       <Trash2 className="w-3.5 h-3.5" />
@@ -244,6 +268,13 @@ export const LocationsPage: React.FC = () => {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="Phone"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+              />
+              <input
+                type="text"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                placeholder="Currency symbol (e.g. Rs.) — defaults to Rs."
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
               />
               <button

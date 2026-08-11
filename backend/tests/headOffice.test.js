@@ -88,6 +88,22 @@ describe('head office', () => {
     expect(main.foodCostPercent).toBeCloseTo((20 / (100 * 1.08)) * 100, 5); // ingredientCost 10*2=20
   });
 
+  it("reports each location's own currency, not a single shared one", async () => {
+    let res = await asOwner(request(app).get('/api/head-office/summary'));
+    let main = res.body.locations.find((l) => l.id === mainLocationId);
+    let branch = res.body.locations.find((l) => l.id === secondLocationId);
+    expect(main.currency).toBe('Rs.');
+    expect(branch.currency).toBe('Rs.');
+
+    await asOwner(request(app).patch(`/api/locations/${secondLocationId}`)).send({ currency: '$' });
+
+    res = await asOwner(request(app).get('/api/head-office/summary'));
+    main = res.body.locations.find((l) => l.id === mainLocationId);
+    branch = res.body.locations.find((l) => l.id === secondLocationId);
+    expect(main.currency).toBe('Rs.');
+    expect(branch.currency).toBe('$');
+  });
+
   it('reports outstanding credit exposure per location', async () => {
     const menuRes = await asOwner(request(app).post('/api/menu')).send({
       name: 'HO Credit Dish',

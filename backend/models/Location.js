@@ -11,6 +11,9 @@ const locationSchema = new mongoose.Schema(
     address: { type: String, default: '' },
     phone: { type: String, default: '' },
     isActive: { type: Boolean, default: true },
+    // Each branch bills in its own currency — a chain can operate across
+    // borders. Defaults to 'Rs.' to match Restaurant.currency's own default.
+    currency: { type: String, default: 'Rs.' },
     // Cooldown marker for low-stock alert emails — checked every few hours,
     // but only actually sends once per day per location so a persistently
     // low item doesn't spam Owner/Manager on every check.

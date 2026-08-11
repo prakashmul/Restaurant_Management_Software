@@ -138,6 +138,7 @@ export interface Location {
   name: string;
   address: string;
   phone: string;
+  currency: string;
   isActive: boolean;
   geofence: {
     latitude: number | null;
@@ -150,6 +151,7 @@ export interface HeadOfficeLocationSummary {
   id: string;
   name: string;
   address: string;
+  currency: string;
   isActive: boolean;
   todaySales: number;
   sales7d: number;
@@ -447,7 +449,6 @@ export const posApi = {
       name: string;
       price: number;
       quantity: number;
-      seatNumber?: number | null;
       bumped?: boolean;
     }[]
   ) => {
@@ -458,7 +459,6 @@ export const posApi = {
       name: item.name,
       price: Number(item.price) || 0,
       quantity: Number(item.quantity) || 1,
-      seatNumber: item.seatNumber ?? null,
       bumped: Boolean(item.bumped),
     }));
 
@@ -489,8 +489,11 @@ export const posApi = {
   applyTip: (orderId: any, data: { type: 'percent' | 'flat' | null; value?: number }) =>
     API.patch<Order>(`/orders/${cleanId(orderId)}/tip`, data).then((r) => r.data),
 
-  refundOrder: (orderId: any, reason: string) =>
-    API.patch<Order>(`/orders/${cleanId(orderId)}/refund`, { reason }).then((r) => r.data),
+  refundOrder: (orderId: any, reason: string, amount?: number) =>
+    API.patch<Order>(`/orders/${cleanId(orderId)}/refund`, {
+      reason,
+      ...(amount != null ? { amount } : {}),
+    }).then((r) => r.data),
 
   // Credit Ledger Integration
   processFullCredit: (orderId: any, customerName: string, customerPhone: string) => {
@@ -664,10 +667,10 @@ export const posApi = {
   // Locations
   getLocations: () => API.get<Location[]>('/locations').then((r) => r.data),
 
-  createLocation: (data: { name: string; address?: string; phone?: string }) =>
+  createLocation: (data: { name: string; address?: string; phone?: string; currency?: string }) =>
     API.post<Location>('/locations', data).then((r) => r.data),
 
-  updateLocation: (id: string, data: Partial<Pick<Location, 'name' | 'address' | 'phone' | 'isActive'>>) =>
+  updateLocation: (id: string, data: Partial<Pick<Location, 'name' | 'address' | 'phone' | 'currency' | 'isActive'>>) =>
     API.patch<Location>(`/locations/${id}`, data).then((r) => r.data),
 
   deleteLocation: (id: string) => API.delete(`/locations/${id}`).then((r) => r.data),

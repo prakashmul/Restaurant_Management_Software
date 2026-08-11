@@ -43,7 +43,6 @@ export interface OrderItem {
   quantity: number;
   recipe?: RecipeItem[];
   bumped?: boolean;
-  seatNumber?: number | null;
 }
 
 export interface Order {
@@ -54,6 +53,7 @@ export interface Order {
   status: 'pending' | 'paid' | 'completed' | 'cancelled' | 'credit' | 'unsettled' | 'settled' | 'refunded';
   subtotal?: number;
   remainingBalance?: number;
+  paymentHistory?: { amount: number; note?: string; type: 'partial' | 'full'; createdAt: string }[];
   refundHistory?: { amount: number; reason: string; refundedBy: string; createdAt: string }[];
   refundedAt?: string;
   discount?: {

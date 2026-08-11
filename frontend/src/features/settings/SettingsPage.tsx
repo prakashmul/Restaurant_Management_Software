@@ -10,10 +10,11 @@ export const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
-  const [currency, setCurrency] = useState('');
   const [taxRatePercent, setTaxRatePercent] = useState('');
-  // Stored as points-per-Rs.100-spent for a friendlier settings input; the
-  // API takes/returns the raw per-Rs. ratio (loyaltyEarnRatePerRs * 100).
+  // Stored as points-per-100-spent for a friendlier settings input; the API
+  // takes/returns the raw ratio (loyaltyEarnRatePerRs * 100). This ratio is
+  // org-wide, applied the same regardless of which branch's own currency an
+  // order was placed in (currency itself now lives per-Location).
   const [loyaltyPointsPer100, setLoyaltyPointsPer100] = useState('');
   const [loyaltyPointValueRs, setLoyaltyPointValueRs] = useState('');
 
@@ -40,7 +41,6 @@ export const SettingsPage: React.FC = () => {
       .then((r) => {
         setName(r.name);
         setLogoUrl(r.logoUrl);
-        setCurrency(r.currency);
         setTaxRatePercent(String(r.taxRatePercent));
         setLoyaltyPointsPer100(String((r.loyaltyEarnRatePerRs ?? 0.01) * 100));
         setLoyaltyPointValueRs(String(r.loyaltyPointValueRs ?? 1));
@@ -67,7 +67,6 @@ export const SettingsPage: React.FC = () => {
       const updated = await posApi.updateRestaurantSettings({
         name: name.trim(),
         logoUrl: logoUrl.trim(),
-        currency: currency.trim(),
         taxRatePercent: Number(taxRatePercent),
         loyaltyEarnRatePerRs: Number(loyaltyPointsPer100) / 100,
         loyaltyPointValueRs: Number(loyaltyPointValueRs),
@@ -75,7 +74,6 @@ export const SettingsPage: React.FC = () => {
       updateRestaurant({
         name: updated.name,
         logoUrl: updated.logoUrl,
-        currency: updated.currency,
         taxRatePercent: updated.taxRatePercent,
         loyaltyEarnRatePerRs: updated.loyaltyEarnRatePerRs,
         loyaltyPointValueRs: updated.loyaltyPointValueRs,
@@ -172,7 +170,7 @@ export const SettingsPage: React.FC = () => {
         <h1 className="text-lg font-semibold text-white flex items-center gap-2">
           <Settings className="w-5 h-5 text-indigo-400" /> Restaurant Settings
         </h1>
-        <p className="text-xs text-slate-400 mt-1">Organization-wide details — name, branding, currency, and tax rate.</p>
+        <p className="text-xs text-slate-400 mt-1">Organization-wide details — name, branding, and tax rate.</p>
       </div>
 
       {loading ? (
@@ -186,7 +184,6 @@ export const SettingsPage: React.FC = () => {
           </p>
           <div className="mt-5 text-left space-y-2 text-xs text-slate-400">
             <div><span className="text-slate-500">Name:</span> {name}</div>
-            <div><span className="text-slate-500">Currency:</span> {currency}</div>
             <div><span className="text-slate-500">Tax rate:</span> {taxRatePercent}%</div>
           </div>
         </div>
@@ -222,30 +219,22 @@ export const SettingsPage: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Currency Symbol</label>
-              <input
-                type="text"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                placeholder="Rs."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Tax Rate (%)</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="any"
-                value={taxRatePercent}
-                onChange={(e) => setTaxRatePercent(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Tax Rate (%)</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="any"
+              value={taxRatePercent}
+              onChange={(e) => setTaxRatePercent(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition"
+            />
           </div>
+
+          <p className="text-[11px] text-slate-500 -mt-1">
+            Currency is set per location — manage it from the Locations page.
+          </p>
 
           <div className="pt-2 border-t border-slate-800/60">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5 mb-2">
@@ -253,7 +242,7 @@ export const SettingsPage: React.FC = () => {
             </span>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Points per Rs. 100 spent</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Points per 100 spent</label>
                 <input
                   type="number"
                   min="0"
@@ -264,7 +253,7 @@ export const SettingsPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Rs. value per point</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Value per point</label>
                 <input
                   type="number"
                   min="0"

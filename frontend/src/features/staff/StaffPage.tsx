@@ -36,7 +36,8 @@ const ROLE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
 };
 
 export const StaffPage: React.FC = () => {
-  const { currentUser, isOwner } = useAuth();
+  const { currentUser, isOwner, currentRestaurant, currentLocation } = useAuth();
+  const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
 
   const [activeSubTab, setActiveSubTab] = useState<'roles' | 'staff'>('roles');
 
@@ -610,7 +611,7 @@ export const StaffPage: React.FC = () => {
                         />
                       </div>
                     ) : (
-                      <span className="text-xs tabular-nums text-slate-400">Rs. {member.hourlyRate.toFixed(2)}/hr</span>
+                      <span className="text-xs tabular-nums text-slate-400">{currency} {member.hourlyRate.toFixed(2)}/hr</span>
                     )}
                     {canManageStaff && !isSelf(member) && (
                       <button
@@ -689,7 +690,7 @@ export const StaffPage: React.FC = () => {
                           />
                         </div>
                       ) : (
-                        <span className="tabular-nums">Rs. {member.hourlyRate.toFixed(2)}</span>
+                        <span className="tabular-nums">{currency} {member.hourlyRate.toFixed(2)}</span>
                       )}
                     </td>
                     <td className="px-5 py-3">

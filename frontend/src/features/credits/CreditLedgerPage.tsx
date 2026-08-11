@@ -11,7 +11,8 @@ import { useAuth } from '../../auth/AuthContext';
 type PaymentMethod = 'cash' | 'card' | 'qr' | 'split';
 
 export const CreditLedgerPage = () => {
-  const { currentLocation } = useAuth();
+  const { currentLocation, currentRestaurant } = useAuth();
+  const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
   const [activeTab, setActiveTab] = useState<'active' | 'history' | 'settlements'>('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<CreditCustomer[]>([]);
@@ -66,7 +67,7 @@ export const CreditLedgerPage = () => {
   // Settle all credit debt for a customer permanently
   const handleSettleCustomerDebt = async (customer: CreditCustomer) => {
     const formattedAmount = Number(customer.debtOwed.toFixed(2)).toLocaleString();
-    if (!window.confirm(`Mark Rs. ${formattedAmount} as FULLY PAID for ${customer.name}?`)) return;
+    if (!window.confirm(`Mark ${currency} ${formattedAmount} as FULLY PAID for ${customer.name}?`)) return;
 
     try {
       setLoading(true);
@@ -150,9 +151,9 @@ export const CreditLedgerPage = () => {
       formattedNote = 'QR Payment';
     } else if (paymentMethod === 'split') {
       const parts: string[] = [];
-      if (Number(splitAmounts.cash) > 0) parts.push(`Cash: Rs.${splitAmounts.cash}`);
-      if (Number(splitAmounts.card) > 0) parts.push(`Card: Rs.${splitAmounts.card}`);
-      if (Number(splitAmounts.qr) > 0) parts.push(`QR: Rs.${splitAmounts.qr}`);
+      if (Number(splitAmounts.cash) > 0) parts.push(`Cash: ${currency}${splitAmounts.cash}`);
+      if (Number(splitAmounts.card) > 0) parts.push(`Card: ${currency}${splitAmounts.card}`);
+      if (Number(splitAmounts.qr) > 0) parts.push(`QR: ${currency}${splitAmounts.qr}`);
 
       formattedNote = `Split Payment (${parts.join(', ')})`;
     }
@@ -170,7 +171,7 @@ export const CreditLedgerPage = () => {
       if (remainingAfter <= 0) {
         alert(`Account for ${selectedCustomer.name} is now FULLY SETTLED!`);
       } else {
-        alert(`Successfully deducted Rs. ${payment.toLocaleString()} from ${selectedCustomer.name}'s balance.`);
+        alert(`Successfully deducted ${currency} ${payment.toLocaleString()} from ${selectedCustomer.name}'s balance.`);
       }
 
       setIsEditModalOpen(false);
@@ -218,9 +219,13 @@ export const CreditLedgerPage = () => {
     return customers.reduce((accTotal, customer) => {
       if (!customer.notesHistory || customer.notesHistory.length === 0) return accTotal;
 
+      // Regex extracts payment numbers from notes (e.g., "Rs.500", "Rs. 1,000",
+      // "Deducted 250") — the currency prefix is escaped and built from the
+      // live setting so this keeps matching after Settings changes it.
+      const escapedCurrency = currency.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const notePattern = new RegExp(`(?:${escapedCurrency}\\s*|Deducted\\s*)([\\d,]+(?:\\.\\d+)?)`, 'i');
       const customerSettledSum = customer.notesHistory.reduce((sum, note) => {
-        // Regex extracts payment numbers from notes (e.g., "Rs.500", "Rs. 1,000", "Deducted 250")
-        const match = note.match(/(?:Rs\.?\s*|Deducted\s*)([\d,]+(?:\.\d+)?)/i);
+        const match = note.match(notePattern);
         if (match) {
           const parsedVal = parseFloat(match[1].replace(/,/g, ''));
           return sum + (isNaN(parsedVal) ? 0 : parsedVal);
@@ -230,13 +235,13 @@ export const CreditLedgerPage = () => {
 
       return accTotal + customerSettledSum;
     }, 0);
-  }, [customers]);
+  }, [customers, currency]);
 
   // CSV Export
   const handleExportCSV = () => {
     if (filteredCustomers.length === 0) return alert('No data available to export');
 
-    const headers = ['Customer Name', 'Phone', 'Orders Count', 'Remaining Debt (Rs)', 'Status'];
+    const headers = ['Customer Name', 'Phone', 'Orders Count', `Remaining Debt (${currency})`, 'Status'];
     const rows = filteredCustomers.map((c) => [
       `"${c.name}"`,
       `"${c.phone}"`,
@@ -321,7 +326,7 @@ export const CreditLedgerPage = () => {
           <div>
             <span className="text-xs font-bold tracking-wider uppercase text-slate-400">Total Balance ({activeTab})</span>
             <div className="text-3xl font-black text-slate-100 mt-1 font-mono">
-              Rs. {Number(totalDebt.toFixed(2)).toLocaleString()}
+              {currency} {Number(totalDebt.toFixed(2)).toLocaleString()}
             </div>
           </div>
           <div className="w-12 h-12 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-center text-amber-500">
@@ -334,7 +339,7 @@ export const CreditLedgerPage = () => {
           <div>
             <span className="text-xs font-bold tracking-wider uppercase text-slate-400">Total Credit Settled</span>
             <div className="text-3xl font-black text-emerald-400 mt-1 font-mono">
-              Rs. {Number(totalSettledAmount.toFixed(2)).toLocaleString()}
+              {currency} {Number(totalSettledAmount.toFixed(2)).toLocaleString()}
             </div>
           </div>
           <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
@@ -424,7 +429,7 @@ export const CreditLedgerPage = () => {
                   <div className="flex items-center gap-2 shrink-0 ml-auto">
                     <div className="text-right">
                       <div className="text-sm sm:text-base font-black text-slate-100 font-mono">
-                        Rs.{Number(customer.debtOwed.toFixed(2)).toLocaleString()}
+                        {currency}{Number(customer.debtOwed.toFixed(2)).toLocaleString()}
                       </div>
 
                       {isCleared ? (
@@ -521,7 +526,7 @@ export const CreditLedgerPage = () => {
                 <div className="text-right">
                   <span className="text-[10px] text-slate-500 uppercase font-semibold">Current Balance</span>
                   <p className="text-base font-black text-slate-100 font-mono">
-                    Rs. {Number(selectedCustomer.debtOwed.toFixed(2)).toLocaleString()}
+                    {currency} {Number(selectedCustomer.debtOwed.toFixed(2)).toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -623,7 +628,7 @@ export const CreditLedgerPage = () => {
                     <MinusCircle className="w-4 h-4" /> Receive Partial Payment
                   </span>
                   <span className="text-xs text-slate-400 font-mono">
-                    Current Owed: <strong className="text-slate-200">Rs. {Number(editFormData.debtOwed.toFixed(2)).toLocaleString()}</strong>
+                    Current Owed: <strong className="text-slate-200">{currency} {Number(editFormData.debtOwed.toFixed(2)).toLocaleString()}</strong>
                   </span>
                 </div>
 
@@ -707,7 +712,7 @@ export const CreditLedgerPage = () => {
                   <div className="flex justify-between items-center pt-2 border-t border-amber-500/10 text-xs">
                     <span className="text-slate-400">Remaining Balance After Payment:</span>
                     <span className="font-mono font-bold text-amber-400">
-                      Rs. {Math.max(0, Number((editFormData.debtOwed - effectiveTotalPayment).toFixed(2))).toLocaleString()}
+                      {currency} {Math.max(0, Number((editFormData.debtOwed - effectiveTotalPayment).toFixed(2))).toLocaleString()}
                     </span>
                   </div>
                 )}

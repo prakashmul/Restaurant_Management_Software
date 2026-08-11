@@ -108,3 +108,59 @@ export async function syncBuiltInRolePermissions() {
     logger.error({ err }, 'Built-in role permission sync failed');
   }
 }
+
+// The new page.* keys (introduced alongside the page-level "Page Access"
+// section) gate whole pages; before they existed, a page's visibility was
+// implied by whichever finer action permission its data actually required
+// (e.g. the Orders page needed orders.view). syncBuiltInRolePermissions
+// above already backfills the 5 built-in role names via
+// DEFAULT_ROLE_PERMISSIONS, but a restaurant's own custom roles are
+// (deliberately, per that function's own doc comment) never touched by it —
+// so without this, every custom role would suddenly lose every page the
+// moment this ships. This infers each missing page.* key from whether the
+// role already holds the legacy action key that used to stand in for it,
+// preserving exactly the access a custom role already had. Idempotent,
+// additive-only, safe to run on every boot.
+const PAGE_KEY_TO_LEGACY_PERMISSION = {
+  'page.pos': 'tables',
+  'page.kitchen': 'orders.view',
+  'page.inventory': 'stock.view',
+  'page.orders': 'orders.view',
+  'page.credits': 'credit.view',
+  'page.customers': 'customers',
+  'page.reservations': 'reservations.view',
+  'page.headoffice': 'settings.headoffice',
+  'page.recipecosting': 'recipecosting.view',
+  'page.scheduling': 'scheduling.view',
+  'page.procurement': 'procurement.view',
+  'page.transfers': 'transfers.view',
+  'page.staff': 'staff.view',
+  'page.locations': 'locations.manage',
+  'page.auditlog': 'audit.view',
+  'page.settings': 'settings.restaurant',
+};
+
+export async function migrateCustomRolePageAccess() {
+  try {
+    const roles = await Role.find({ name: { $nin: BUILT_IN_ROLE_NAMES } });
+    let totalUpdated = 0;
+
+    for (const role of roles) {
+      const toAdd = Object.entries(PAGE_KEY_TO_LEGACY_PERMISSION)
+        .filter(([pageKey, legacyKey]) => role.permissions.includes(legacyKey) && !role.permissions.includes(pageKey))
+        .map(([pageKey]) => pageKey);
+      if (toAdd.length === 0) continue;
+
+      role.permissions = [...role.permissions, ...toAdd];
+      await role.save();
+      totalUpdated += 1;
+      logger.info(`Backfilled ${toAdd.length} page-access permission(s) onto custom role "${role.name}" (restaurant ${role.restaurantId}): ${toAdd.join(', ')}`);
+    }
+
+    if (totalUpdated > 0) {
+      logger.info(`Custom role page-access backfill complete — updated ${totalUpdated} role document(s).`);
+    }
+  } catch (err) {
+    logger.error({ err }, 'Custom role page-access backfill failed');
+  }
+}

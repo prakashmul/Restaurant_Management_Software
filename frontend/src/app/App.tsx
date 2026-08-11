@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { PosPage } from '../features/pos/PosPage';
 import { KitchenDisplayPage } from '../features/kitchen/KitchenDisplayPage';
 import { ReservationsPage } from '../features/reservations/ReservationsPage';
 import { InventoryPage } from '../features/inventory/InventoryPage';
-import { Sidebar } from '../shared/components/Sidebar';
+import { Sidebar, NAV_ITEMS } from '../shared/components/Sidebar';
 import { Header } from '../shared/components/Header';
 import { OrdersPage } from '../features/orders/OrdersPage';
 import { CreditLedgerPage } from '../features/credits/CreditLedgerPage';
@@ -25,6 +25,26 @@ import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { AuthProvider, useAuth } from '../auth/AuthContext';
 import { OfflineQueueProvider } from '../offline/OfflineQueueContext';
 import { posApi } from '../api/posApi';
+
+// Same permission map the sidebar filters its entries by (see NAV_ITEMS in
+// Sidebar.tsx) — reused here so a role without a page's permission can't
+// reach it by typing the URL either, not just by it being hidden from nav.
+const PERMISSION_BY_PATH = new Map<string, string | null>(NAV_ITEMS.map((item) => [item.path, item.permission]));
+
+function PageGuard({ path, children }: { path: string; children: ReactNode }) {
+  const { hasPermission, isOwner, permissionsLoaded } = useAuth();
+  const permission = PERMISSION_BY_PATH.get(path);
+  if (!permission) return <>{children}</>;
+  // Wait for the async permissions fetch (Owner never needs it, since
+  // hasPermission always passes for Owner) before deciding to redirect —
+  // otherwise a hard refresh on a page the user genuinely has access to
+  // would briefly look unpermitted and bounce them to the dashboard.
+  if (!isOwner && !permissionsLoaded) return null;
+  if (!hasPermission(permission)) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
 
 function AppShell() {
   const { currentUser, currentLocation, setCurrentLocation, login, logout } = useAuth();
@@ -126,23 +146,23 @@ function AppShell() {
         <main className="flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/pos" element={<PosPage />} />
-            <Route path="/kitchen" element={<KitchenDisplayPage />} />
-            <Route path="/reservations" element={<ReservationsPage />} />
-            <Route path="/inventory" element={<InventoryPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/credits" element={<CreditLedgerPage />} />
-            <Route path="/staff" element={<StaffPage />} />
-            <Route path="/recipe-costing" element={<RecipeCostingPage />} />
+            <Route path="/pos" element={<PageGuard path="/pos"><PosPage /></PageGuard>} />
+            <Route path="/kitchen" element={<PageGuard path="/kitchen"><KitchenDisplayPage /></PageGuard>} />
+            <Route path="/reservations" element={<PageGuard path="/reservations"><ReservationsPage /></PageGuard>} />
+            <Route path="/inventory" element={<PageGuard path="/inventory"><InventoryPage /></PageGuard>} />
+            <Route path="/orders" element={<PageGuard path="/orders"><OrdersPage /></PageGuard>} />
+            <Route path="/credits" element={<PageGuard path="/credits"><CreditLedgerPage /></PageGuard>} />
+            <Route path="/staff" element={<PageGuard path="/staff"><StaffPage /></PageGuard>} />
+            <Route path="/recipe-costing" element={<PageGuard path="/recipe-costing"><RecipeCostingPage /></PageGuard>} />
             <Route path="/checklists" element={<ChecklistsPage />} />
-            <Route path="/scheduling" element={<SchedulingPage />} />
-            <Route path="/procurement" element={<ProcurementPage />} />
-            <Route path="/transfers" element={<TransfersPage />} />
-            <Route path="/audit-log" element={<AuditLogPage />} />
-            <Route path="/locations" element={<LocationsPage />} />
-            <Route path="/head-office" element={<HeadOfficePage />} />
-            <Route path="/customers" element={<CustomersPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/scheduling" element={<PageGuard path="/scheduling"><SchedulingPage /></PageGuard>} />
+            <Route path="/procurement" element={<PageGuard path="/procurement"><ProcurementPage /></PageGuard>} />
+            <Route path="/transfers" element={<PageGuard path="/transfers"><TransfersPage /></PageGuard>} />
+            <Route path="/audit-log" element={<PageGuard path="/audit-log"><AuditLogPage /></PageGuard>} />
+            <Route path="/locations" element={<PageGuard path="/locations"><LocationsPage /></PageGuard>} />
+            <Route path="/head-office" element={<PageGuard path="/head-office"><HeadOfficePage /></PageGuard>} />
+            <Route path="/customers" element={<PageGuard path="/customers"><CustomersPage /></PageGuard>} />
+            <Route path="/settings" element={<PageGuard path="/settings"><SettingsPage /></PageGuard>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

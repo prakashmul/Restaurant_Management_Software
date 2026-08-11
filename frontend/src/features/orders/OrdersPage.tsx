@@ -53,17 +53,25 @@ export const OrdersPage: React.FC = () => {
 
   const fetchData = async () => {
     setLoading(true);
+    // Fetched independently, not via Promise.all: tables is only used to
+    // resolve a friendlier table number for display (getTableNumber already
+    // falls back to the raw id when a table isn't found), and roles like
+    // Kitchen commonly have orders.view without the separate tables
+    // permission — a 403 on the tables call must not blank out the order
+    // list it has nothing to do with.
     try {
-      const [orderData, tableData] = await Promise.all([
-        posApi.getOrders(),
-        posApi.getTables(),
-      ]);
+      const orderData = await posApi.getOrders();
       setOrders(Array.isArray(orderData) ? orderData : []);
-      setTables(Array.isArray(tableData) ? tableData : []);
     } catch (err) {
-      console.error('Failed to load order history or tables:', err);
+      console.error('Failed to load order history:', err);
     } finally {
       setLoading(false);
+    }
+    try {
+      const tableData = await posApi.getTables();
+      setTables(Array.isArray(tableData) ? tableData : []);
+    } catch (err) {
+      console.error('Failed to load tables:', err);
     }
   };
 

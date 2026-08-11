@@ -3,6 +3,35 @@
 // a subset of this list.
 export const PERMISSION_SECTIONS = [
   {
+    // Coarse, page-level gate — a role without a page's key here never sees
+    // it in the sidebar and can't reach it by URL either, regardless of
+    // what finer per-action permissions (below) it's also been granted.
+    // Dashboard and Checklists aren't listed: both stay visible to every
+    // role no matter what (Dashboard hosts the shared shift clock;
+    // Checklists' daily prep list is intentionally open to all staff — see
+    // the comment on checklistsRoutes.js's GET /today route).
+    key: 'pages',
+    label: 'Page Access',
+    permissions: [
+      { key: 'page.pos', label: 'POS System' },
+      { key: 'page.kitchen', label: 'Kitchen Display' },
+      { key: 'page.inventory', label: 'Inventory' },
+      { key: 'page.orders', label: 'Order History' },
+      { key: 'page.credits', label: 'Credit Ledger' },
+      { key: 'page.customers', label: 'Customers' },
+      { key: 'page.reservations', label: 'Reservations' },
+      { key: 'page.headoffice', label: 'Head Office' },
+      { key: 'page.recipecosting', label: 'Recipe Costing' },
+      { key: 'page.scheduling', label: 'Staff Schedule' },
+      { key: 'page.procurement', label: 'Procurement' },
+      { key: 'page.transfers', label: 'Transfers' },
+      { key: 'page.staff', label: 'Users & Roles' },
+      { key: 'page.locations', label: 'Locations' },
+      { key: 'page.auditlog', label: 'Audit Log' },
+      { key: 'page.settings', label: 'Settings' },
+    ],
+  },
+  {
     key: 'general',
     label: 'General',
     permissions: [
@@ -101,6 +130,8 @@ export const ALL_PERMISSIONS = PERMISSION_SECTIONS.flatMap((s) => s.permissions.
 export const DEFAULT_ROLE_PERMISSIONS = {
   Owner: [...ALL_PERMISSIONS],
   Manager: [
+    'page.pos', 'page.kitchen', 'page.inventory', 'page.orders', 'page.credits', 'page.customers',
+    'page.reservations', 'page.recipecosting', 'page.scheduling', 'page.procurement', 'page.transfers', 'page.staff',
     'dash', 'tables', 'staff.view', 'customers',
     'orders.view', 'orders.edit', 'orders.checkout', 'orders.void', 'orders.discount', 'orders.tip', 'orders.credit', 'orders.refund',
     'menu.view', 'menu.edit', 'stock.view', 'stock.edit', 'stock.history',
@@ -111,14 +142,19 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'settings.staff',
   ],
   Cashier: [
+    'page.pos', 'page.kitchen', 'page.inventory', 'page.orders', 'page.credits', 'page.customers',
+    'page.reservations', 'page.scheduling', 'page.procurement', 'page.transfers',
     'tables', 'customers', 'orders.view', 'orders.checkout', 'orders.tip', 'orders.credit', 'menu.view', 'stock.view', 'credit.view', 'credit.settle',
     'procurement.view', 'transfers.view', 'scheduling.view', 'reservations.view', 'reservations.manage',
   ],
   Waiter: [
+    'page.pos', 'page.kitchen', 'page.inventory', 'page.orders', 'page.credits', 'page.customers',
+    'page.reservations', 'page.scheduling', 'page.procurement', 'page.transfers',
     'tables', 'customers', 'orders.view', 'orders.edit', 'orders.checkout', 'orders.tip', 'menu.view', 'stock.view', 'credit.view',
     'procurement.view', 'transfers.view', 'scheduling.view', 'reservations.view', 'reservations.manage',
   ],
   Kitchen: [
+    'page.kitchen', 'page.inventory', 'page.orders', 'page.scheduling', 'page.procurement', 'page.transfers',
     'orders.view', 'menu.view', 'stock.view', 'stock.edit',
     'procurement.view', 'transfers.view', 'scheduling.view',
   ],

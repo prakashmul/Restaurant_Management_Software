@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { setupTestApp } from './helpers/testApp.js';
 import { createAuthedUser, authedRequest, inviteAndLoginStaff } from './helpers/auth.js';
+import { migrateCustomRolePageAccess } from '../services/roleMigrationService.js';
 
 let app;
 let teardown;
@@ -38,6 +39,49 @@ describe('roles', () => {
     const waiter = res.body.find((r) => r.name === 'Waiter');
     expect(waiter.permissions).not.toContain('settings.roles');
     expect(waiter.permissions).toContain('tables');
+  });
+
+  it("lets any authenticated role read its own permissions even though listing every role is admin-only", async () => {
+    const { token: kitchenToken } = await createAuthedUser(app, { role: 'Kitchen' });
+
+    // The admin-only listing (used by the Roles & Permissions screen) stays
+    // gated — a low-privilege role must not see every other role's full
+    // permission set.
+    const listRes = await request(app).get('/api/roles').set('Authorization', `Bearer ${kitchenToken}`);
+    expect(listRes.status).toBe(403);
+
+    // But this self-scoped endpoint (what AuthContext's hasPermission relies
+    // on to decide what the sidebar shows) must work for every role — a
+    // Kitchen worker still needs to know their own capabilities.
+    const mineRes = await request(app).get('/api/roles/mine').set('Authorization', `Bearer ${kitchenToken}`);
+    expect(mineRes.status).toBe(200);
+    expect(mineRes.body.permissions).toContain('page.kitchen');
+    expect(mineRes.body.permissions).toContain('orders.view');
+    expect(mineRes.body.permissions).not.toContain('page.settings');
+    expect(mineRes.body.permissions).not.toContain('staff.view');
+  });
+
+  it('grants built-in roles page-level access matching their existing feature access, and nothing more', async () => {
+    const res = await asOwner(request(app).get('/api/roles'));
+    const owner = res.body.find((r) => r.name === 'Owner');
+    const waiter = res.body.find((r) => r.name === 'Waiter');
+    const kitchen = res.body.find((r) => r.name === 'Kitchen');
+
+    // Owner gets every page.
+    expect(owner.permissions).toContain('page.settings');
+    expect(owner.permissions).toContain('page.staff');
+
+    // Waiter can reach the pages its existing permissions imply...
+    expect(waiter.permissions).toContain('page.pos');
+    expect(waiter.permissions).toContain('page.orders');
+    // ...but not owner/manager-only pages it was never granted access to.
+    expect(waiter.permissions).not.toContain('page.settings');
+    expect(waiter.permissions).not.toContain('page.staff');
+    expect(waiter.permissions).not.toContain('page.locations');
+
+    // Kitchen never had `tables`, so it doesn't get the POS page either.
+    expect(kitchen.permissions).toContain('page.kitchen');
+    expect(kitchen.permissions).not.toContain('page.pos');
   });
 
   it('rejects a role without settings.roles (Waiter) from creating a custom role', async () => {
@@ -78,6 +122,30 @@ describe('roles', () => {
 
     const listRes = await asOwner(request(app).get('/api/roles'));
     expect(listRes.body.length).toBe(6);
+  });
+
+  it('backfills page-access onto an existing custom role from the legacy permissions it already had, without granting pages it never had access to', async () => {
+    const beforeRes = await asOwner(request(app).get('/api/roles'));
+    const before = beforeRes.body.find((r) => r._id === shiftLeadId);
+    // Shift Lead was created above with 'tables', 'orders.view', 'credit.view',
+    // etc. but no page.* keys at all yet (they didn't exist when it was made).
+    expect(before.permissions).not.toContain('page.pos');
+
+    await migrateCustomRolePageAccess();
+
+    const afterRes = await asOwner(request(app).get('/api/roles'));
+    const after = afterRes.body.find((r) => r._id === shiftLeadId);
+    expect(after.permissions).toContain('page.pos'); // had 'tables'
+    expect(after.permissions).toContain('page.orders'); // had 'orders.view'
+    expect(after.permissions).toContain('page.credits'); // had 'credit.view'
+    expect(after.permissions).not.toContain('page.settings'); // never had settings.restaurant
+    expect(after.permissions).not.toContain('page.staff'); // never had staff.view
+
+    // Re-running is a no-op — no duplicate entries, nothing removed.
+    await migrateCustomRolePageAccess();
+    const rerunRes = await asOwner(request(app).get('/api/roles'));
+    const rerun = rerunRes.body.find((r) => r._id === shiftLeadId);
+    expect(rerun.permissions.filter((p) => p === 'page.pos').length).toBe(1);
   });
 
   it('rejects the Owner role from being edited or deleted', async () => {

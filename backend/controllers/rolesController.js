@@ -8,6 +8,27 @@ export function getPermissionCatalog(req, res) {
   res.json(PERMISSION_SECTIONS);
 }
 
+// Every authenticated user needs to know their own capabilities — to decide
+// what the sidebar shows them, if nothing else — regardless of their role.
+// listRoles below is deliberately admin-only (staff.view), since seeing
+// every role's full permission set is organization-management data; this is
+// the unprivileged counterpart that only ever exposes the caller's own list.
+export async function getMyPermissions(req, res) {
+  try {
+    const membership = await StaffMembership.findOne({ userId: req.user.id, restaurantId: req.restaurantId }).select(
+      'roleId'
+    );
+    if (!membership?.roleId) {
+      return res.json({ permissions: [] });
+    }
+    const role = await Role.findById(membership.roleId).select('permissions');
+    res.json({ permissions: role?.permissions || [] });
+  } catch (err) {
+    req.log.error({ err }, 'Error fetching own permissions');
+    res.status(500).json({ error: 'Failed to fetch permissions' });
+  }
+}
+
 function toRoleDTO(role, userCountByRoleId) {
   return {
     _id: role._id,

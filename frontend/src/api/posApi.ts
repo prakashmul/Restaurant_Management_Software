@@ -595,6 +595,11 @@ export const posApi = {
 
   getRoles: () => API.get<Role[]>('/roles').then((r) => r.data),
 
+  // Self-scoped — every authenticated user can call this regardless of
+  // role, unlike getRoles above (which needs staff.view, since it exposes
+  // every role's full permission set as organization-management data).
+  getMyPermissions: () => API.get<{ permissions: string[] }>('/roles/mine').then((r) => r.data),
+
   createRole: (data: { name: string; description?: string; permissions: string[] }) =>
     API.post<Role>('/roles', data).then((r) => r.data),
 

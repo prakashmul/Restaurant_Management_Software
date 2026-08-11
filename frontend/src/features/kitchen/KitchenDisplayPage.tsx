@@ -31,14 +31,24 @@ export const KitchenDisplayPage: React.FC = () => {
   const [now, setNow] = useState(Date.now());
 
   const fetchData = async () => {
+    // Fetched independently, not via Promise.all: tables is only used to
+    // resolve a friendlier table number for display, and the Kitchen role
+    // commonly has orders.view without the separate tables permission — a
+    // 403 on the tables call must not blank out the kitchen ticket queue
+    // this page exists to show.
     try {
-      const [orderData, tableData] = await Promise.all([posApi.getKitchenOrders(), posApi.getTables()]);
+      const orderData = await posApi.getKitchenOrders();
       setOrders(Array.isArray(orderData) ? orderData : []);
-      setTables(Array.isArray(tableData) ? tableData : []);
     } catch (err) {
       console.error('Failed to load kitchen orders:', err);
     } finally {
       setLoading(false);
+    }
+    try {
+      const tableData = await posApi.getTables();
+      setTables(Array.isArray(tableData) ? tableData : []);
+    } catch (err) {
+      console.error('Failed to load tables:', err);
     }
   };
 

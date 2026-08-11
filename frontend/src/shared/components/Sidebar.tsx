@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
 import {
   LayoutGrid,
   Utensils,
@@ -37,6 +38,38 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+// Single source of truth for both the sidebar's visible entries and the
+// route guard in App.tsx — a page with a `permission` value is hidden from
+// the sidebar AND refuses to render directly by URL for a role lacking that
+// key. Each key is its own dedicated page.* permission (editable per role
+// from the "Page Access" section of Users & Roles → Roles & Permissions),
+// separate from the finer per-action permissions that control what a role
+// can DO once it's on a page it can see. `permission: null` means every
+// logged-in role can always reach it — Dashboard hosts the shared shift
+// clock and Checklists' daily prep list is intentionally open to all staff
+// regardless of role (see checklistsRoutes.js), so neither has a page.* key
+// at all; there's nothing to toggle.
+export const NAV_ITEMS = [
+  { path: '/', label: 'Dashboard', icon: LayoutGrid, end: true, permission: null },
+  { path: '/pos', label: 'POS System', icon: Utensils, end: false, permission: 'page.pos' },
+  { path: '/kitchen', label: 'Kitchen Display', icon: Flame, end: false, permission: 'page.kitchen' },
+  { path: '/inventory', label: 'Inventory', icon: Package, end: false, permission: 'page.inventory' },
+  { path: '/orders', label: 'Order History', icon: ShoppingBag, end: false, permission: 'page.orders' },
+  { path: '/credits', label: 'Credit Ledger', icon: CreditCard, end: false, permission: 'page.credits' },
+  { path: '/customers', label: 'Customers', icon: Users2, end: false, permission: 'page.customers' },
+  { path: '/reservations', label: 'Reservations', icon: CalendarClock, end: false, permission: 'page.reservations' },
+  { path: '/head-office', label: 'Head Office', icon: Building2, end: false, permission: 'page.headoffice' },
+  { path: '/recipe-costing', label: 'Recipe Costing', icon: ChefHat, end: false, permission: 'page.recipecosting' },
+  { path: '/checklists', label: 'Checklists', icon: ClipboardCheck, end: false, permission: null },
+  { path: '/scheduling', label: 'Staff Schedule', icon: CalendarDays, end: false, permission: 'page.scheduling' },
+  { path: '/procurement', label: 'Procurement', icon: Truck, end: false, permission: 'page.procurement' },
+  { path: '/transfers', label: 'Transfers', icon: ArrowLeftRight, end: false, permission: 'page.transfers' },
+  { path: '/staff', label: 'Users & Roles', icon: Users, end: false, permission: 'page.staff' },
+  { path: '/locations', label: 'Locations', icon: MapPin, end: false, permission: 'page.locations' },
+  { path: '/audit-log', label: 'Audit Log', icon: History, end: false, permission: 'page.auditlog' },
+  { path: '/settings', label: 'Settings', icon: Settings, end: false, permission: 'page.settings' },
+] as const;
+
 export const Sidebar: React.FC<SidebarProps> = ({
   currentUser = null,
   onLogin,
@@ -46,27 +79,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { hasPermission, isOwner, permissionsLoaded } = useAuth();
 
-  const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
-    { path: '/pos', label: 'POS System', icon: Utensils, end: false },
-    { path: '/kitchen', label: 'Kitchen Display', icon: Flame, end: false },
-    { path: '/inventory', label: 'Inventory', icon: Package, end: false },
-    { path: '/orders', label: 'Order History', icon: ShoppingBag, end: false },
-    { path: '/credits', label: 'Credit Ledger', icon: CreditCard, end: false },
-    { path: '/customers', label: 'Customers', icon: Users2, end: false },
-    { path: '/reservations', label: 'Reservations', icon: CalendarClock, end: false },
-    { path: '/head-office', label: 'Head Office', icon: Building2, end: false },
-    { path: '/recipe-costing', label: 'Recipe Costing', icon: ChefHat, end: false },
-    { path: '/checklists', label: 'Checklists', icon: ClipboardCheck, end: false },
-    { path: '/scheduling', label: 'Staff Schedule', icon: CalendarDays, end: false },
-    { path: '/procurement', label: 'Procurement', icon: Truck, end: false },
-    { path: '/transfers', label: 'Transfers', icon: ArrowLeftRight, end: false },
-    { path: '/staff', label: 'Users & Roles', icon: Users, end: false },
-    { path: '/locations', label: 'Locations', icon: MapPin, end: false },
-    { path: '/audit-log', label: 'Audit Log', icon: History, end: false },
-    { path: '/settings', label: 'Settings', icon: Settings, end: false },
-  ] as const;
+  // Before the async permissions fetch resolves, show every item rather
+  // than filtering down to the always-visible ones — avoids a flash of a
+  // near-empty sidebar on load that then suddenly gains entries a moment
+  // later. Owner never needs to wait, since hasPermission always passes.
+  const navItems =
+    isOwner || permissionsLoaded
+      ? NAV_ITEMS.filter((item) => item.permission === null || hasPermission(item.permission))
+      : NAV_ITEMS;
 
   // Close popup menu when clicking outside
   useEffect(() => {

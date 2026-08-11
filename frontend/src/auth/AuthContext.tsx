@@ -54,6 +54,11 @@ interface AuthContextValue {
   // permission. This is a UI hint only; the backend is the real gate and
   // re-checks fresh on every request regardless of what this says.
   hasPermission: (key: string) => boolean;
+  // False from mount until the permissions fetch above resolves — a
+  // page-level guard should wait for this (or for isOwner) before deciding
+  // to redirect, so a hard refresh on a permitted page doesn't briefly look
+  // unpermitted and bounce the user away.
+  permissionsLoaded: boolean;
   login: (user: AuthUser, token: string, restaurant?: AuthRestaurant | null) => void;
   setCurrentLocation: (location: AuthLocation | null) => void;
   updateRestaurant: (patch: Partial<AuthRestaurant>) => void;
@@ -101,22 +106,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentRestaurant, setCurrentRestaurant] = useState<AuthRestaurant | null>(readStoredRestaurant);
   const [currentLocation, setCurrentLocationState] = useState<AuthLocation | null>(readStoredLocation);
   const [permissions, setPermissions] = useState<string[]>([]);
+  // Starts false on every fresh mount (e.g. a hard refresh) since permissions
+  // are fetched async — a page-level guard checking hasPermission() before
+  // this resolves would see an empty list and incorrectly bounce a user off
+  // a page they actually have access to. Guards should wait for this (or for
+  // isOwner, which never depends on the fetch) before deciding to redirect.
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
 
   useEffect(() => {
     if (!currentUser) {
       setPermissions([]);
+      setPermissionsLoaded(false);
       return;
     }
     let cancelled = false;
+    setPermissionsLoaded(false);
     posApi
-      .getRoles()
-      .then((roles) => {
+      .getMyPermissions()
+      .then((res) => {
         if (cancelled) return;
-        const myRole = roles.find((r) => r.name === currentUser.role);
-        setPermissions(myRole?.permissions || []);
+        setPermissions(res.permissions || []);
       })
       .catch(() => {
         if (!cancelled) setPermissions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPermissionsLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -187,6 +202,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isOwner,
         isLocationRestricted,
         hasPermission,
+        permissionsLoaded,
         login,
         setCurrentLocation,
         updateRestaurant,

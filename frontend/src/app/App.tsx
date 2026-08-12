@@ -26,6 +26,9 @@ import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { AuthProvider, useAuth } from '../auth/AuthContext';
 import { OfflineQueueProvider } from '../offline/OfflineQueueContext';
 import { posApi } from '../api/posApi';
+import { PlatformAdminAuthProvider, usePlatformAdminAuth } from '../platform-admin/PlatformAdminAuthContext';
+import { AdminConsoleApp } from '../platform-admin/AdminConsoleApp';
+import { SetAdminPasswordPage } from '../platform-admin/SetAdminPasswordPage';
 
 // Same permission map the sidebar filters its entries by (see NAV_ITEMS in
 // Sidebar.tsx) — reused here so a role without a page's permission can't
@@ -33,7 +36,7 @@ import { posApi } from '../api/posApi';
 const PERMISSION_BY_PATH = new Map<string, string | null>(NAV_ITEMS.map((item) => [item.path, item.permission]));
 
 function PageGuard({ path, children }: { path: string; children: ReactNode }) {
-  const { hasPermission, isOwner, permissionsLoaded } = useAuth();
+  const { hasPermission, isOwner, permissionsLoaded, currentRestaurant } = useAuth();
   const permission = PERMISSION_BY_PATH.get(path);
   if (!permission) return <>{children}</>;
   // Wait for the async permissions fetch (Owner never needs it, since
@@ -44,11 +47,17 @@ function PageGuard({ path, children }: { path: string; children: ReactNode }) {
   if (!hasPermission(permission)) {
     return <Navigate to="/" replace />;
   }
+  // Same AND-gate as Sidebar.tsx's NAV_ITEMS filter, applied at the route
+  // level too so a disabled page can't be reached by typing the URL either.
+  if (currentRestaurant?.enabledPages && !currentRestaurant.enabledPages.includes(permission)) {
+    return <Navigate to="/" replace />;
+  }
   return <>{children}</>;
 }
 
 function AppShell() {
   const { currentUser, currentLocation, setCurrentLocation, login, logout } = useAuth();
+  const { currentAdmin, login: platformAdminLogin } = usePlatformAdminAuth();
   const location = useLocation();
 
   // Open modal automatically on initial load if no user session exists
@@ -109,6 +118,17 @@ function AppShell() {
   if (location.pathname === '/reset-password') {
     return <ResetPasswordPage />;
   }
+  if (location.pathname === '/platform-admin/set-password') {
+    return <SetAdminPasswordPage />;
+  }
+
+  // A platform admin isn't a restaurant user at all — same login form (see
+  // onPlatformAdminLoginSuccess below), but once that session exists it
+  // renders the console instead of the tenant shell, regardless of whether
+  // a tenant session also happens to exist in this browser.
+  if (currentAdmin) {
+    return <AdminConsoleApp />;
+  }
 
   // If user is not logged in, render ONLY the LoginModal backdrop
   if (!currentUser) {
@@ -121,6 +141,9 @@ function AppShell() {
           onLoginSuccess={(user, token, restaurant) => {
             login(user, token, restaurant);
             setIsLoginOpen(false);
+          }}
+          onPlatformAdminLoginSuccess={(admin, token) => {
+            platformAdminLogin(admin, token);
           }}
         />
       </div>
@@ -178,6 +201,10 @@ function AppShell() {
           login(user, token, restaurant);
           setIsLoginOpen(false);
         }}
+        onPlatformAdminLoginSuccess={(admin, token) => {
+          platformAdminLogin(admin, token);
+          setIsLoginOpen(false);
+        }}
       />
     </div>
   );
@@ -186,11 +213,13 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <OfflineQueueProvider>
-        <BrowserRouter>
-          <AppShell />
-        </BrowserRouter>
-      </OfflineQueueProvider>
+      <PlatformAdminAuthProvider>
+        <OfflineQueueProvider>
+          <BrowserRouter>
+            <AppShell />
+          </BrowserRouter>
+        </OfflineQueueProvider>
+      </PlatformAdminAuthProvider>
     </AuthProvider>
   );
 }

@@ -28,6 +28,7 @@ import restaurantRoutes from './routes/restaurantRoutes.js';
 import reservationsRoutes from './routes/reservationsRoutes.js';
 import expensesRoutes from './routes/expensesRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import platformAdminRoutes from './routes/platformAdminRoutes.js';
 
 // Builds the Express app with no side effects — no DB connection, no
 // listen() — so it can be mounted by server.js for real traffic or
@@ -64,6 +65,9 @@ export function createApp({ allowedOrigins }) {
 
   app.use(healthRoutes);
   app.use('/api/auth', authRoutes);
+  // Its own auth (requirePlatformAdmin) — a platform admin is not a tenant
+  // user, so this must not sit behind the tenant-scoped middleware below.
+  app.use('/api/platform-admin', platformAdminRoutes);
 
   // Every route registered below this line requires a valid Bearer token,
   // and has req.locationId resolved (see resolveLocationScope).

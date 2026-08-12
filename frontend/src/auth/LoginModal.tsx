@@ -11,6 +11,11 @@ interface LoginModalProps {
     token: string,
     restaurant?: AuthRestaurant | null
   ) => void;
+  // Optional: the same sign-in form doubles as the platform admin console's
+  // login (see App.tsx) — /api/auth/login itself decides which shape to
+  // return, this is just where the response is routed once it comes back.
+  // Tenant sign-in is completely unaffected when this prop isn't passed.
+  onPlatformAdminLoginSuccess?: (admin: { id: string; name: string; email: string }, token: string) => void;
   isLoggedIn?: boolean;
 }
 
@@ -18,6 +23,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   isOpen,
   onClose,
   onLoginSuccess,
+  onPlatformAdminLoginSuccess,
   isLoggedIn = false,
 }) => {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -142,6 +148,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         setPassword('');
         setIsSignUp(false);
         setSuccessMessage('Restaurant created successfully! Please sign in.');
+      } else if (data.platformAdmin) {
+        onPlatformAdminLoginSuccess?.(data.admin, data.token);
+        setEmail('');
+        setPassword('');
       } else if (data.requiresTotp) {
         // Correct password, but this account has 2FA enabled — the same
         // form resubmits with a totpToken once the user enters it, rather

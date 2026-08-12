@@ -19,6 +19,13 @@ export function requireAuth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+    // A platform-admin token (see platformAdminAuth.js) carries no
+    // restaurantId — reject it explicitly rather than falling through with
+    // req.restaurantId undefined, which would make every tenant-scoped
+    // query stop filtering by restaurant and leak data across tenants.
+    if (payload.platformAdmin) {
+      return res.status(401).json({ message: 'Invalid or expired session. Please sign in again.' });
+    }
     req.user = { id: payload.sub, email: payload.email, role: payload.role, locationId: payload.locationId || null };
     req.restaurantId = payload.restaurantId;
     return next();

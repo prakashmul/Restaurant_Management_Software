@@ -26,6 +26,12 @@ export interface AuthRestaurant {
     longitude: number | null;
     radiusMeters: number;
   };
+  // Platform-admin-controlled page entitlements (see Sidebar.tsx / App.tsx's
+  // PageGuard) — ANDed with the existing per-role Page Access permissions,
+  // never a replacement for them. Undefined on a stale cached session from
+  // before this field existed; both call sites treat that as "unrestricted"
+  // until the next login refreshes it.
+  enabledPages?: string[];
 }
 
 export interface AuthLocation {

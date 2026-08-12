@@ -6,9 +6,18 @@ import User from '../models/User.js';
 import Restaurant from '../models/Restaurant.js';
 import StaffMembership from '../models/StaffMembership.js';
 import Location from '../models/Location.js';
+import PlatformAdmin from '../models/PlatformAdmin.js';
 import { seedNewRestaurant, seedDefaultRoles } from '../services/seedService.js';
 import { issuePasswordSetupEmail } from '../services/passwordSetupService.js';
 import { hashResetToken } from '../utils/resetToken.js';
+
+function signPlatformAdminToken(admin) {
+  return jwt.sign(
+    { sub: admin._id.toString(), email: admin.email, platformAdmin: true },
+    process.env.JWT_SECRET,
+    { expiresIn: '12h' }
+  );
+}
 
 function signToken(user, membership) {
   return jwt.sign(
@@ -36,6 +45,10 @@ export function toRestaurantDTO(restaurant) {
     loyaltyEarnRatePerRs: restaurant.loyaltyEarnRatePerRs,
     loyaltyPointValueRs: restaurant.loyaltyPointValueRs,
     geofence: restaurant.geofence,
+    // Platform-admin-controlled page entitlements — see Sidebar.tsx/App.tsx's
+    // PageGuard, which AND this with the existing per-role Page Access
+    // permissions rather than replacing them.
+    enabledPages: restaurant.enabledPages || [],
   };
 }
 
@@ -116,8 +129,27 @@ const BCRYPT_HASH_PATTERN = /^\$2[aby]\$/;
 export async function login(req, res) {
   try {
     const { email, password, totpToken } = req.body;
+    const normalizedEmail = email.toLowerCase().trim();
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +totpSecret');
+    // Checked first, entirely separately from the tenant User/StaffMembership
+    // lookup below: a platform admin isn't a restaurant user at all, so a
+    // match here returns early with a differently-shaped response and never
+    // falls through to (or affects) the normal login path.
+    const platformAdmin = await PlatformAdmin.findOne({ email: normalizedEmail }).select('+password');
+    if (platformAdmin) {
+      const validAdminPassword = await platformAdmin.comparePassword(password);
+      if (!validAdminPassword) {
+        return res.status(400).json({ message: 'Invalid email or password.' });
+      }
+      return res.status(200).json({
+        message: 'Login successful',
+        platformAdmin: true,
+        token: signPlatformAdminToken(platformAdmin),
+        admin: { id: platformAdmin._id, name: platformAdmin.name, email: platformAdmin.email },
+      });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail }).select('+password +totpSecret');
     if (!user) {
       return res.status(400).json({ message: 'Invalid email or password.' });
     }

@@ -20,6 +20,12 @@ const restaurantSchema = new mongoose.Schema(
       longitude: { type: Number, default: null },
       radiusMeters: { type: Number, default: 300 },
     },
+    // Platform-admin-controlled entitlement list (page.* keys, same values
+    // as permissions.js's "Page Access" section). Empty by default for every
+    // new signup. Not yet enforced anywhere — see the platform admin console
+    // — this is the data model for a later phase that will gate Sidebar/
+    // PageGuard/routes by it, on top of the existing per-role permissions.
+    enabledPages: { type: [String], default: [] },
   },
   { timestamps: true }
 );

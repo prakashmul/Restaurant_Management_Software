@@ -81,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { hasPermission, isOwner, permissionsLoaded } = useAuth();
+  const { hasPermission, isOwner, permissionsLoaded, currentRestaurant } = useAuth();
 
   // Before the async permissions fetch resolves, show every item rather
   // than filtering down to the always-visible ones — avoids a flash of a
@@ -89,7 +89,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // later. Owner never needs to wait, since hasPermission always passes.
   const navItems =
     isOwner || permissionsLoaded
-      ? NAV_ITEMS.filter((item) => item.permission === null || hasPermission(item.permission))
+      ? NAV_ITEMS.filter((item) => {
+          if (item.permission === null) return true;
+          if (!hasPermission(item.permission)) return false;
+          // AND-gate: the platform admin console's per-restaurant page
+          // toggle (see the "Platform Admin Console" feature) — applies even
+          // to Owners. Undefined enabledPages (a stale cached session from
+          // before this field existed) means unrestricted, not locked out.
+          if (currentRestaurant?.enabledPages && !currentRestaurant.enabledPages.includes(item.permission)) {
+            return false;
+          }
+          return true;
+        })
       : NAV_ITEMS;
 
   // Close popup menu when clicking outside

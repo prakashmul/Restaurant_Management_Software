@@ -14,6 +14,8 @@ import { migrateToRoles, syncBuiltInRolePermissions, migrateCustomRolePageAccess
 import { migrateOrdersToCustomers } from './services/customerService.js';
 import { checkLowStockAndAlert } from './services/lowStockAlertService.js';
 import { sendDailySummaries } from './services/summaryReportService.js';
+import { seedPlatformAdmin } from './services/platformAdminSeedService.js';
+import { migrateGrandfatherEnabledPages } from './services/enabledPagesMigrationService.js';
 
 // --- REQUIRED ENVIRONMENT VARIABLES ---
 // Accepts either name — the Atlas-generated .env uses MONGODB_URI.
@@ -50,6 +52,12 @@ mongoose
     await syncBuiltInRolePermissions();
     await migrateCustomRolePageAccess();
     await migrateOrdersToCustomers();
+    // Must run before any tenant can log in and see enforcement kick in —
+    // grandfathers every pre-existing restaurant to full page access before
+    // Sidebar/PageGuard start ANDing enabledPages against the per-role
+    // permissions (see Sidebar.tsx, App.tsx's PageGuard).
+    await migrateGrandfatherEnabledPages();
+    await seedPlatformAdmin();
 
     // Low stock: checked every 6 hours, but lowStockAlertService itself only
     // actually emails once a day per location — see its cooldown logic.

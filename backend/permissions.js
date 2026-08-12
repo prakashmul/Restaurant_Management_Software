@@ -133,6 +133,11 @@ export const PERMISSION_SECTIONS = [
 
 export const ALL_PERMISSIONS = PERMISSION_SECTIONS.flatMap((s) => s.permissions.map((p) => p.key));
 
+// Just the "Page Access" keys — used by the platform admin console's
+// enabledPages toggle (a restaurant-wide entitlement layer, separate from
+// but ANDed with these same per-role keys; see enabledPagesMigrationService.js).
+export const PAGE_PERMISSION_KEYS = PERMISSION_SECTIONS.find((s) => s.key === 'pages').permissions.map((p) => p.key);
+
 // Seeded into every new restaurant as its starting 4 non-Owner roles (Owner
 // itself always gets every permission — see DEFAULT_ROLE_PERMISSIONS.Owner
 // below — and is protected from being edited or deleted).

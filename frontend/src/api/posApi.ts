@@ -744,6 +744,11 @@ export const posApi = {
     loyaltyPointValueRs?: number;
   }) => API.patch<AuthRestaurantShape>('/restaurant', data).then((r) => r.data),
 
+  // Subscription plans — read-only for tenant staff (see Contact Us page);
+  // plan definitions themselves are only editable from the Platform Admin
+  // Console's Plans tab.
+  listPlans: () => API.get<{ plans: SubscriptionPlan[] }>('/plans').then((r) => r.data.plans),
+
   attachOrderCustomer: (orderId: any, data: { customerName?: string; customerPhone: string }) =>
     API.patch<Order>(`/orders/${cleanId(orderId)}/customer`, data).then((r) => r.data),
 
@@ -817,4 +822,15 @@ interface AuthRestaurantShape {
   loyaltyEarnRatePerRs: number;
   loyaltyPointValueRs: number;
   geofence: { latitude: number | null; longitude: number | null; radiusMeters: number };
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  slug: string;
+  priceMonthly: number;
+  priceAnnual: number;
+  perLocationPrice: number;
+  pages: string[];
+  sortOrder: number;
 }

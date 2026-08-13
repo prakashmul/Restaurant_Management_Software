@@ -21,11 +21,15 @@ const restaurantSchema = new mongoose.Schema(
       radiusMeters: { type: Number, default: 300 },
     },
     // Platform-admin-controlled entitlement list (page.* keys, same values
-    // as permissions.js's "Page Access" section). Empty by default for every
-    // new signup. Not yet enforced anywhere — see the platform admin console
-    // — this is the data model for a later phase that will gate Sidebar/
-    // PageGuard/routes by it, on top of the existing per-role permissions.
+    // as permissions.js's "Page Access" section). Enforced in Sidebar.tsx and
+    // App.tsx's PageGuard, ANDed against the per-role permissions.
     enabledPages: { type: [String], default: [] },
+    // Which subscription Plan this restaurant is on — informational/billing
+    // only. Assigning a plan copies its `pages` into enabledPages above
+    // (additively — see assignRestaurantPlan in platformAdminController.js);
+    // enabledPages, not this field, is what's actually enforced. Null means
+    // no plan assigned (e.g. a restaurant predating the subscription system).
+    planId: { type: mongoose.Schema.Types.ObjectId, ref: 'Plan', default: null },
   },
   { timestamps: true }
 );

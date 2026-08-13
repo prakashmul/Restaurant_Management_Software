@@ -39,7 +39,33 @@ export interface TenantRestaurant {
   slug: string;
   createdAt: string;
   enabledPages: string[];
+  planId: string | null;
+  planName: string | null;
   owner: { name: string; email: string } | null;
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  slug: string;
+  priceMonthly: number;
+  priceAnnual: number;
+  perLocationPrice: number;
+  pages: string[];
+  isActive: boolean;
+  sortOrder: number;
+  restaurantCount: number;
+}
+
+export interface PlanInput {
+  name: string;
+  slug: string;
+  priceMonthly: number;
+  priceAnnual: number;
+  perLocationPrice?: number;
+  pages: string[];
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
 export interface PlatformAdminSummary {
@@ -61,8 +87,36 @@ export const platformAdminApi = {
   updateRestaurantPages: async (restaurantId: string, pages: string[]) =>
     (await adminApi.patch(`/restaurants/${restaurantId}/pages`, { pages })).data,
 
+  assignRestaurantPlan: async (restaurantId: string, planId: string) =>
+    (await adminApi.patch(`/restaurants/${restaurantId}/plan`, { planId })).data as {
+      id: string;
+      planId: string;
+      planName: string;
+      enabledPages: string[];
+    },
+
+  // Explicit, separate from assign — assign only ever adds a plan's pages,
+  // this is the only action that removes any (replaces enabledPages with
+  // exactly the restaurant's current plan's page list).
+  resetRestaurantPlanDefaults: async (restaurantId: string) =>
+    (await adminApi.patch(`/restaurants/${restaurantId}/plan/reset`)).data as {
+      id: string;
+      planId: string;
+      planName: string;
+      enabledPages: string[];
+    },
+
   deleteRestaurant: async (restaurantId: string) =>
     (await adminApi.delete(`/restaurants/${restaurantId}`)).data as { message: string },
+
+  listPlans: async () => (await adminApi.get('/plans')).data.plans as Plan[],
+
+  createPlan: async (input: PlanInput) => (await adminApi.post('/plans', input)).data as { id: string },
+
+  updatePlan: async (planId: string, input: Partial<PlanInput>) =>
+    (await adminApi.put(`/plans/${planId}`, input)).data as Plan,
+
+  deletePlan: async (planId: string) => (await adminApi.delete(`/plans/${planId}`)).data as { message: string },
 
   listAdmins: async () => (await adminApi.get('/admins')).data.admins as PlatformAdminSummary[],
 

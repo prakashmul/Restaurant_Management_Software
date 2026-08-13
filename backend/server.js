@@ -20,6 +20,7 @@ import { migrateOrdersToCustomers } from './services/customerService.js';
 import { checkLowStockAndAlert } from './services/lowStockAlertService.js';
 import { sendDailySummaries } from './services/summaryReportService.js';
 import { seedPlatformAdmin } from './services/platformAdminSeedService.js';
+import { seedDefaultPlans } from './services/planSeedService.js';
 import {
   migrateGrandfatherEnabledPages,
   migrateGrandfatherDashboardChecklists,
@@ -71,6 +72,7 @@ mongoose
     // Checklists now that those became real page.* keys too.
     await migrateGrandfatherDashboardChecklists();
     await seedPlatformAdmin();
+    await seedDefaultPlans();
 
     // Low stock: checked every 6 hours, but lowStockAlertService itself only
     // actually emails once a day per location — see its cooldown logic.

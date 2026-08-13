@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Menu, MapPin, WifiOff, RefreshCw } from 'lucide-react';
+import { Menu, MapPin, WifiOff, RefreshCw, Layers } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { posApi } from '../../api/posApi';
 import type { Location } from '../../api/posApi';
 import { useOfflineQueueContext } from '../../offline/OfflineQueueContext';
+import { PlansModal } from './PlansModal';
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -19,6 +20,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const { currentUser, currentRestaurant, currentLocation, isLocationRestricted, setCurrentLocation } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
   const { isOnline, pendingCount } = useOfflineQueueContext();
+  const [plansOpen, setPlansOpen] = useState(false);
 
   useEffect(() => {
     if (isLocationRestricted) return;
@@ -43,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   };
 
   return (
+    <>
     <header className="h-16 border-b border-slate-800 bg-slate-900/40 backdrop-blur px-3 sm:px-6 flex items-center justify-between gap-2 shrink-0">
       <div className="flex items-center gap-2 min-w-0">
         <button
@@ -57,6 +60,17 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
             {currentRestaurant?.name || 'Restaurant Management'}
           </h1>
         </div>
+
+        {currentRestaurant && (
+          <button
+            onClick={() => setPlansOpen(true)}
+            title="Subscription Plan"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-full px-2.5 sm:px-3 py-1.5 shrink-0 transition"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Subscription Plan</span>
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4 shrink-0">
@@ -113,5 +127,11 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
         </div>
       </div>
     </header>
+    {/* Rendered as a header sibling, not a child — the header's
+        backdrop-blur creates a containing block for fixed-position
+        descendants, which would otherwise clip this modal to the header's
+        own 64px-tall box instead of the viewport. */}
+    {plansOpen && <PlansModal onClose={() => setPlansOpen(false)} />}
+    </>
   );
 };

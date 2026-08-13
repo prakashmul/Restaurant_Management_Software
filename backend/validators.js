@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ALL_PERMISSIONS } from './permissions.js';
+import { ALL_PERMISSIONS, PAGE_PERMISSION_KEYS } from './permissions.js';
 
 export const registerSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
@@ -344,4 +344,38 @@ export const updateExpenseSchema = z.object({
   amount: z.coerce.number().positive('Amount must be greater than 0.').optional(),
   date: z.string().regex(DATE_PATTERN, 'Date must be in YYYY-MM-DD format.').optional(),
   note: z.string().trim().optional(),
+});
+
+const planPagesSchema = z
+  .array(z.enum(PAGE_PERMISSION_KEYS))
+  .refine((arr) => new Set(arr).size === arr.length, 'Pages list contains duplicates.');
+
+export const createPlanSchema = z.object({
+  name: z.string().trim().min(1, 'Plan name is required.'),
+  slug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, 'Slug is required.')
+    .regex(/^[a-z0-9-]+$/, 'Slug may only contain lowercase letters, numbers, and hyphens.'),
+  priceMonthly: z.coerce.number().min(0, 'Monthly price cannot be negative.'),
+  priceAnnual: z.coerce.number().min(0, 'Annual price cannot be negative.'),
+  perLocationPrice: z.coerce.number().min(0).optional().default(0),
+  pages: planPagesSchema.optional().default([]),
+  isActive: z.boolean().optional().default(true),
+  sortOrder: z.coerce.number().optional().default(0),
+});
+
+export const updatePlanSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  priceMonthly: z.coerce.number().min(0).optional(),
+  priceAnnual: z.coerce.number().min(0).optional(),
+  perLocationPrice: z.coerce.number().min(0).optional(),
+  pages: planPagesSchema.optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.coerce.number().optional(),
+});
+
+export const assignRestaurantPlanSchema = z.object({
+  planId: z.string().trim().min(1, 'A plan must be selected.'),
 });

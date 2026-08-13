@@ -25,6 +25,7 @@ import headOfficeRoutes from './routes/headOfficeRoutes.js';
 import transfersRoutes from './routes/transfersRoutes.js';
 import customersRoutes from './routes/customersRoutes.js';
 import restaurantRoutes from './routes/restaurantRoutes.js';
+import plansRoutes from './routes/plansRoutes.js';
 import reservationsRoutes from './routes/reservationsRoutes.js';
 import expensesRoutes from './routes/expensesRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
@@ -97,6 +98,7 @@ export function createApp({ allowedOrigins }) {
   app.use('/api/transfers', transfersRoutes);
   app.use('/api/customers', customersRoutes);
   app.use('/api/restaurant', restaurantRoutes);
+  app.use('/api/plans', plansRoutes);
   app.use('/api/reservations', reservationsRoutes);
   app.use('/api/expenses', expensesRoutes);
   app.use('/api/dashboard', dashboardRoutes);

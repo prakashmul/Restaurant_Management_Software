@@ -221,14 +221,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* PROFILE BUTTON */}
         <button
           onClick={() => setIsProfileOpen(!isProfileOpen)}
-          className="w-full flex items-center justify-between p-2 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-slate-800 transition group"
+          className="w-full flex items-center gap-2 p-2 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-slate-800 transition group"
         >
-          <div className="flex items-center gap-2.5 overflow-hidden">
+          <div className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0">
               {currentUser ? currentUser.name.slice(0, 2).toUpperCase() : <User className="w-4 h-4" />}
             </div>
 
-            <div className="text-left truncate">
+            <div className="text-left truncate min-w-0">
               <h2 className="text-xs font-bold text-slate-200 group-hover:text-white truncate">
                 {currentUser ? currentUser.name : 'Guest Account'}
               </h2>
@@ -238,11 +238,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          <ChevronUp
-            className={`w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-transform duration-200 shrink-0 ${
-              isProfileOpen ? 'rotate-180' : ''
-            }`}
-          />
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Read-only — set from the Platform Admin Console's Plans tab.
+                Only ever shown once a plan is actually assigned. */}
+            {currentUser && currentRestaurant?.planName && (
+              <span
+                title={`${currentRestaurant.planName} plan`}
+                className="text-[9px] font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-wide truncate max-w-[68px]"
+              >
+                {currentRestaurant.planName}
+              </span>
+            )}
+            <ChevronUp
+              className={`w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-transform duration-200 shrink-0 ${
+                isProfileOpen ? 'rotate-180' : ''
+              }`}
+            />
+          </div>
         </button>
       </div>
       </aside>

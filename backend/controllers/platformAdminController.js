@@ -2,6 +2,7 @@ import PlatformAdmin from '../models/PlatformAdmin.js';
 import Restaurant from '../models/Restaurant.js';
 import StaffMembership from '../models/StaffMembership.js';
 import User from '../models/User.js';
+import Plan from '../models/Plan.js';
 import { PERMISSION_SECTIONS } from '../permissions.js';
 import crypto from 'node:crypto';
 import { generateResetToken, hashResetToken } from '../utils/resetToken.js';
@@ -36,6 +37,10 @@ export async function listRestaurants(req, res) {
     .lean();
   const ownerByRestaurant = new Map(owners.map((m) => [String(m.restaurantId), m.userId]));
 
+  const planIds = [...new Set(restaurants.map((r) => r.planId).filter(Boolean).map(String))];
+  const plans = planIds.length ? await Plan.find({ _id: { $in: planIds } }).select('name').lean() : [];
+  const planNameById = new Map(plans.map((p) => [String(p._id), p.name]));
+
   res.json({
     restaurants: restaurants.map((r) => ({
       id: r._id,
@@ -43,6 +48,8 @@ export async function listRestaurants(req, res) {
       slug: r.slug,
       createdAt: r.createdAt,
       enabledPages: r.enabledPages || [],
+      planId: r.planId || null,
+      planName: r.planId ? planNameById.get(String(r.planId)) || null : null,
       owner: ownerByRestaurant.get(String(r._id))
         ? {
             name: ownerByRestaurant.get(String(r._id)).name,
@@ -50,6 +57,129 @@ export async function listRestaurants(req, res) {
           }
         : null,
     })),
+  });
+}
+
+// Every plan defined on the platform, sorted the same way they're meant to
+// be presented (Starter → Growth → Enterprise), plus how many restaurants
+// currently subscribe to each — shown in the Plans tab and used to block
+// deleting a plan still in use (see deletePlan).
+export async function listPlans(req, res) {
+  const plans = await Plan.find().sort({ sortOrder: 1, createdAt: 1 }).lean();
+  const counts = await Restaurant.aggregate([
+    { $match: { planId: { $ne: null } } },
+    { $group: { _id: '$planId', count: { $sum: 1 } } },
+  ]);
+  const countByPlan = new Map(counts.map((c) => [String(c._id), c.count]));
+
+  res.json({
+    plans: plans.map((p) => ({
+      id: p._id,
+      name: p.name,
+      slug: p.slug,
+      priceMonthly: p.priceMonthly,
+      priceAnnual: p.priceAnnual,
+      perLocationPrice: p.perLocationPrice,
+      pages: p.pages,
+      isActive: p.isActive,
+      sortOrder: p.sortOrder,
+      restaurantCount: countByPlan.get(String(p._id)) || 0,
+    })),
+  });
+}
+
+export async function createPlan(req, res) {
+  const existing = await Plan.findOne({ slug: req.body.slug });
+  if (existing) {
+    return res.status(400).json({ message: `A plan with slug "${req.body.slug}" already exists.` });
+  }
+  const plan = await Plan.create(req.body);
+  res.status(201).json({ id: plan._id, name: plan.name, slug: plan.slug });
+}
+
+export async function updatePlan(req, res) {
+  const plan = await Plan.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  if (!plan) return res.status(404).json({ message: 'Plan not found.' });
+  res.json({
+    id: plan._id,
+    name: plan.name,
+    slug: plan.slug,
+    priceMonthly: plan.priceMonthly,
+    priceAnnual: plan.priceAnnual,
+    perLocationPrice: plan.perLocationPrice,
+    pages: plan.pages,
+    isActive: plan.isActive,
+    sortOrder: plan.sortOrder,
+  });
+}
+
+// Blocked while any restaurant still references this plan — deleting it out
+// from under them would leave Restaurant.planId pointing at nothing, which
+// breaks the plan-name lookup in listRestaurants above. Reassign those
+// restaurants to a different plan first.
+export async function deletePlan(req, res) {
+  const inUse = await Restaurant.countDocuments({ planId: req.params.id });
+  if (inUse > 0) {
+    return res.status(400).json({
+      message: `${inUse} restaurant${inUse === 1 ? ' is' : 's are'} still on this plan. Move them to a different plan before deleting it.`,
+    });
+  }
+  const plan = await Plan.findByIdAndDelete(req.params.id);
+  if (!plan) return res.status(404).json({ message: 'Plan not found.' });
+  res.json({ message: `${plan.name} deleted.` });
+}
+
+// Assigns a restaurant to a plan. Additive by design: a plan's pages are
+// unioned into the restaurant's existing enabledPages, never used to
+// replace it — a page an admin granted by hand (see updateRestaurantPages)
+// survives every future plan change. Restoring a restaurant to exactly its
+// plan's defaults is a separate, explicit action (re-run updateRestaurantPages
+// with the plan's own page list), never an automatic side effect of this one.
+export async function assignRestaurantPlan(req, res) {
+  const { planId } = req.body;
+  const [restaurant, plan] = await Promise.all([
+    Restaurant.findById(req.params.id),
+    Plan.findById(planId),
+  ]);
+  if (!restaurant) return res.status(404).json({ message: 'Restaurant not found.' });
+  if (!plan) return res.status(404).json({ message: 'Plan not found.' });
+
+  restaurant.planId = plan._id;
+  restaurant.enabledPages = [...new Set([...(restaurant.enabledPages || []), ...plan.pages])];
+  await restaurant.save();
+
+  res.json({
+    id: restaurant._id,
+    planId: restaurant.planId,
+    planName: plan.name,
+    enabledPages: restaurant.enabledPages,
+  });
+}
+
+// The explicit counterpart to assignRestaurantPlan's additive-only
+// behavior: replaces enabledPages with exactly the restaurant's *currently
+// assigned* plan's page list, dropping anything extra — whether that extra
+// came from a higher plan the restaurant used to be on, or a page an admin
+// granted by hand. This is the only place a plan-related action ever
+// removes a page; assigning/switching plans never does.
+export async function resetRestaurantPlanDefaults(req, res) {
+  const restaurant = await Restaurant.findById(req.params.id);
+  if (!restaurant) return res.status(404).json({ message: 'Restaurant not found.' });
+  if (!restaurant.planId) {
+    return res.status(400).json({ message: 'This restaurant has no plan assigned.' });
+  }
+
+  const plan = await Plan.findById(restaurant.planId);
+  if (!plan) return res.status(404).json({ message: 'Assigned plan no longer exists.' });
+
+  restaurant.enabledPages = [...plan.pages];
+  await restaurant.save();
+
+  res.json({
+    id: restaurant._id,
+    planId: restaurant.planId,
+    planName: plan.name,
+    enabledPages: restaurant.enabledPages,
   });
 }
 

@@ -32,6 +32,10 @@ export interface AuthRestaurant {
   // before this field existed; both call sites treat that as "unrestricted"
   // until the next login refreshes it.
   enabledPages?: string[];
+  // Read-only — set by the Platform Admin Console's Plans tab, purely
+  // informational. null means no plan assigned. enabledPages above is still
+  // the only thing actually enforced; this never gates anything on its own.
+  planName?: string | null;
 }
 
 export interface AuthLocation {

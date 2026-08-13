@@ -1,15 +1,8 @@
 import React, { useState } from 'react';
-import { MessageCircle, Phone, MessageSquareText, Mail, ChevronDown, ChevronUp, Send, CheckCircle2 } from 'lucide-react';
+import { MessageCircle, Phone, MessageSquareText, Mail, ChevronDown, ChevronUp, Send, CheckCircle2, Layers } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
-
-// Hand-drawn WhatsApp glyph — lucide-react only ships generic icons, no
-// third-party brand marks, so this is inlined rather than pulled from a
-// package.
-const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg viewBox="0 0 32 32" fill="currentColor" className={className} aria-hidden="true">
-    <path d="M16.004 3C9.377 3 4 8.377 4 15.004c0 2.386.7 4.61 1.91 6.478L4 29l7.696-1.878a11.94 11.94 0 0 0 4.308.802h.004c6.627 0 12.004-5.377 12.004-12.004C27.988 8.377 22.63 3 16.004 3Zm0 21.86h-.003a9.86 9.86 0 0 1-5.023-1.376l-.36-.214-3.75.916.998-3.653-.235-.375a9.83 9.83 0 0 1-1.51-5.254c0-5.442 4.436-9.877 9.887-9.877 2.64 0 5.122 1.03 6.988 2.898a9.815 9.815 0 0 1 2.892 6.983c0 5.442-4.437 9.952-9.884 9.952Zm5.42-7.402c-.297-.149-1.758-.867-2.03-.966-.273-.099-.472-.148-.67.15-.199.297-.77.965-.943 1.163-.174.198-.348.223-.645.074-.298-.149-1.256-.463-2.393-1.475-.885-.789-1.482-1.763-1.656-2.06-.174-.298-.019-.459.13-.607.134-.133.298-.347.447-.52.15-.174.199-.298.298-.497.1-.198.05-.372-.025-.52-.074-.15-.669-1.612-.916-2.208-.242-.58-.487-.502-.669-.511a12.8 12.8 0 0 0-.57-.011.09.09 0 0 0-.017 0c-.198 0-.52.075-.792.372-.273.298-1.04 1.017-1.04 2.48s1.065 2.876 1.213 3.075c.15.198 2.096 3.2 5.078 4.487.71.307 1.263.49 1.694.626.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.288.174-1.412-.075-.124-.273-.198-.57-.347Z" />
-  </svg>
-);
+import { WhatsAppIcon } from '../../shared/components/WhatsAppIcon';
+import { PlansModal } from '../../shared/components/PlansModal';
 
 const WHATSAPP_NUMBER = '9779823011459';
 const GMAIL_ADDRESS = '23prakashmul@gmail.com';
@@ -45,6 +38,7 @@ export const ContactPage: React.FC = () => {
   const [name, setName] = useState(currentUser?.name || '');
   const [message, setMessage] = useState('');
   const [sent, setSent] = useState<SentChannel>(null);
+  const [plansOpen, setPlansOpen] = useState(false);
 
   const handleSendWhatsApp = (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,6 +145,22 @@ export const ContactPage: React.FC = () => {
         </div>
       </div>
 
+      <button
+        type="button"
+        onClick={() => setPlansOpen(true)}
+        className="w-full max-w-4xl flex items-center gap-4 bg-slate-900 border border-slate-800 hover:border-indigo-500/40 p-5 rounded-2xl transition group text-left"
+      >
+        <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
+          <Layers className="w-6 h-6" />
+        </div>
+        <div className="flex-1">
+          <h2 className="text-sm font-bold text-slate-100 group-hover:text-indigo-400 transition">
+            {currentRestaurant?.planName ? `Current plan: ${currentRestaurant.planName}` : 'View Plans'}
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">See what's included in each plan, or request a change.</p>
+        </div>
+      </button>
+
       <div className="max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
         <button
           type="button"
@@ -229,6 +239,8 @@ export const ContactPage: React.FC = () => {
           </form>
         )}
       </div>
+
+      {plansOpen && <PlansModal onClose={() => setPlansOpen(false)} />}
     </div>
   );
 };

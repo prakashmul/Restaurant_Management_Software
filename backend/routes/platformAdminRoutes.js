@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { requirePlatformAdmin } from '../middleware/platformAdminAuth.js';
+import { validate } from '../middleware/validate.js';
+import { createPlanSchema, updatePlanSchema, assignRestaurantPlanSchema } from '../validators.js';
 import {
   getMe,
   getPageCatalog,
@@ -10,6 +12,12 @@ import {
   listAdmins,
   inviteAdmin,
   acceptInvite,
+  listPlans,
+  createPlan,
+  updatePlan,
+  deletePlan,
+  assignRestaurantPlan,
+  resetRestaurantPlanDefaults,
 } from '../controllers/platformAdminController.js';
 
 // Same rationale as authRoutes.js's authLimiter — blunts guessing attempts
@@ -33,7 +41,13 @@ router.get('/me', getMe);
 router.get('/page-catalog', getPageCatalog);
 router.get('/restaurants', listRestaurants);
 router.patch('/restaurants/:id/pages', updateRestaurantPages);
+router.patch('/restaurants/:id/plan', validate(assignRestaurantPlanSchema), assignRestaurantPlan);
+router.patch('/restaurants/:id/plan/reset', resetRestaurantPlanDefaults);
 router.delete('/restaurants/:id', deleteRestaurant);
+router.get('/plans', listPlans);
+router.post('/plans', validate(createPlanSchema), createPlan);
+router.put('/plans/:id', validate(updatePlanSchema), updatePlan);
+router.delete('/plans/:id', deletePlan);
 router.get('/admins', listAdmins);
 router.post('/admins/invite', inviteAdmin);
 

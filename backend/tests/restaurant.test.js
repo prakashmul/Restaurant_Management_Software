@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { setupTestApp } from './helpers/testApp.js';
 import { createAuthedUser, authedRequest } from './helpers/auth.js';
+import Plan from '../models/Plan.js';
+import { seedDefaultPlans } from '../services/planSeedService.js';
 
 let app;
 let teardown;
@@ -56,5 +58,37 @@ describe('restaurant settings', () => {
   it('rejects a tax rate over 100%', async () => {
     const res = await auth(request(app).patch('/api/restaurant')).send({ taxRatePercent: 150 });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('tenant-facing plan list', () => {
+  it('lets any authenticated staff member view the active plans (pricing is not sensitive)', async () => {
+    await seedDefaultPlans();
+    const { token: waiterToken, locationId } = await createAuthedUser(app, { role: 'Waiter' });
+    const res = await request(app)
+      .get('/api/plans')
+      .set('Authorization', `Bearer ${waiterToken}`)
+      .set('X-Location-Id', locationId);
+    expect(res.status).toBe(200);
+    const names = res.body.plans.map((p) => p.name);
+    expect(names).toEqual(expect.arrayContaining(['Starter', 'Growth', 'Enterprise']));
+  });
+
+  it('excludes an inactive plan from the list', async () => {
+    await Plan.create({
+      name: 'Retired Plan',
+      slug: `retired-plan-${Date.now()}`,
+      priceMonthly: 999,
+      priceAnnual: 9999,
+      pages: [],
+      isActive: false,
+    });
+    const res = await auth(request(app).get('/api/plans'));
+    expect(res.body.plans.map((p) => p.name)).not.toContain('Retired Plan');
+  });
+
+  it('requires authentication', async () => {
+    const res = await request(app).get('/api/plans');
+    expect(res.status).toBe(401);
   });
 });

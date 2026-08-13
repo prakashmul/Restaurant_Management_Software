@@ -4,7 +4,7 @@ import { logAudit } from '../services/auditService.js';
 
 export async function getRestaurant(req, res) {
   try {
-    const restaurant = await Restaurant.findById(req.restaurantId);
+    const restaurant = await Restaurant.findById(req.restaurantId).populate('planId', 'name');
     if (!restaurant) {
       return res.status(404).json({ message: 'Restaurant not found' });
     }
@@ -30,6 +30,7 @@ export async function updateRestaurant(req, res) {
     if (loyaltyEarnRatePerRs !== undefined) restaurant.loyaltyEarnRatePerRs = loyaltyEarnRatePerRs;
     if (loyaltyPointValueRs !== undefined) restaurant.loyaltyPointValueRs = loyaltyPointValueRs;
     await restaurant.save();
+    await restaurant.populate('planId', 'name');
 
     await logAudit(req.restaurantId, req.user, 'updated restaurant settings');
     res.json(toRestaurantDTO(restaurant));

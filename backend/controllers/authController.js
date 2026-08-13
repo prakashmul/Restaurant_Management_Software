@@ -33,6 +33,9 @@ function signToken(user, membership) {
   );
 }
 
+// Expects `restaurant.planId` already populated with at least `name` (see
+// the `.populate('planId', 'name')` call at each call site below) — this
+// stays synchronous and never re-queries the database itself.
 export function toRestaurantDTO(restaurant) {
   return {
     id: restaurant._id,
@@ -49,6 +52,10 @@ export function toRestaurantDTO(restaurant) {
     // PageGuard, which AND this with the existing per-role Page Access
     // permissions rather than replacing them.
     enabledPages: restaurant.enabledPages || [],
+    // Read-only display only — plan assignment/pricing/checkout all live in
+    // the Platform Admin Console, not here. `enabledPages` above is still
+    // the only thing actually enforced.
+    planName: restaurant.planId?.name || null,
   };
 }
 
@@ -194,7 +201,7 @@ export async function login(req, res) {
       return res.status(403).json({ message: 'This account is not linked to any restaurant.' });
     }
 
-    const restaurant = await Restaurant.findById(membership.restaurantId);
+    const restaurant = await Restaurant.findById(membership.restaurantId).populate('planId', 'name');
     const token = signToken(user, membership);
 
     res.status(200).json({

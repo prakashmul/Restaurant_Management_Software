@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Building2, Users2, LogOut } from 'lucide-react';
+import { ShieldCheck, Building2, Users2, Layers, LogOut } from 'lucide-react';
 import { usePlatformAdminAuth } from './PlatformAdminAuthContext';
 import { TenantDirectoryPage } from './TenantDirectoryPage';
 import { ManageAdminsPage } from './ManageAdminsPage';
+import { PlansPage } from './PlansPage';
 
-type Tab = 'restaurants' | 'admins';
+type Tab = 'restaurants' | 'plans' | 'admins';
 
 // Deliberately its own top-level layout — no Sidebar, no react-router
 // Routes — this console is a separate small tool the project owner reaches
@@ -17,6 +18,7 @@ export const AdminConsoleApp: React.FC = () => {
 
   const tabs: { key: Tab; label: string; icon: typeof Building2 }[] = [
     { key: 'restaurants', label: 'Restaurants', icon: Building2 },
+    { key: 'plans', label: 'Plans', icon: Layers },
     { key: 'admins', label: 'Admins', icon: Users2 },
   ];
 
@@ -66,7 +68,9 @@ export const AdminConsoleApp: React.FC = () => {
       </nav>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-        {tab === 'restaurants' ? <TenantDirectoryPage /> : <ManageAdminsPage />}
+        {tab === 'restaurants' && <TenantDirectoryPage />}
+        {tab === 'plans' && <PlansPage />}
+        {tab === 'admins' && <ManageAdminsPage />}
       </main>
     </div>
   );

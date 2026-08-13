@@ -17,6 +17,8 @@ import {
 } from '../services/enabledPagesMigrationService.js';
 import { migrateUniversalPagesToExistingRoles } from '../services/roleMigrationService.js';
 import { PAGE_PERMISSION_KEYS } from '../permissions.js';
+import Plan from '../models/Plan.js';
+import { seedDefaultPlans } from '../services/planSeedService.js';
 
 let app;
 let teardown;
@@ -343,5 +345,235 @@ describe('Dashboard/Checklists page-access migration', () => {
     const ownerRole = await Role.findOne({ restaurantId: fresh.restaurantId, name: 'Owner' });
     expect(ownerRole.permissions).toContain('page.dashboard');
     expect(ownerRole.permissions).toContain('page.checklists');
+  });
+});
+
+describe('subscription plans', () => {
+  it('seeds exactly the three default plans, idempotently', async () => {
+    await seedDefaultPlans();
+    await seedDefaultPlans(); // second call must not create duplicates
+
+    const slugs = (await Plan.find().select('slug').lean()).map((p) => p.slug).sort();
+    expect(slugs).toEqual(['enterprise', 'growth', 'starter']);
+
+    const growth = await Plan.findOne({ slug: 'growth' });
+    expect(growth.pages).toContain('page.pos');
+    expect(growth.pages).toContain('page.kitchen');
+    expect(growth.pages).not.toContain('page.headoffice');
+
+    const enterprise = await Plan.findOne({ slug: 'enterprise' });
+    expect(enterprise.pages.sort()).toEqual([...PAGE_PERMISSION_KEYS].sort());
+  });
+
+  it('lists plans with a restaurantCount, requires platform admin auth', async () => {
+    const unauthed = await request(app).get('/api/platform-admin/plans');
+    expect(unauthed.status).toBe(401);
+
+    const res = await request(app).get('/api/platform-admin/plans').set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.plans.length).toBeGreaterThanOrEqual(3);
+    expect(res.body.plans[0]).toHaveProperty('restaurantCount');
+  });
+
+  it('creates a plan, rejects a duplicate slug, edits its price and pages', async () => {
+    const createRes = await request(app)
+      .post('/api/platform-admin/plans')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Bar Only', slug: 'bar-only-test', priceMonthly: 1500, priceAnnual: 15000, pages: ['page.pos'] });
+    expect(createRes.status).toBe(201);
+
+    const dupRes = await request(app)
+      .post('/api/platform-admin/plans')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Bar Only Again', slug: 'bar-only-test', priceMonthly: 1000, priceAnnual: 10000 });
+    expect(dupRes.status).toBe(400);
+
+    const editRes = await request(app)
+      .put(`/api/platform-admin/plans/${createRes.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ priceMonthly: 1800, pages: ['page.pos', 'page.orders'] });
+    expect(editRes.status).toBe(200);
+    expect(editRes.body.priceMonthly).toBe(1800);
+    expect(editRes.body.pages.sort()).toEqual(['page.orders', 'page.pos']);
+  });
+
+  it('blocks deleting a plan that a restaurant is still on, allows it once reassigned', async () => {
+    const plan = await Plan.create({ name: 'Delete Me', slug: `delete-me-${Date.now()}`, priceMonthly: 100, priceAnnual: 1000, pages: ['page.pos'] });
+    const rest = await createAuthedUser(app);
+    await Restaurant.findByIdAndUpdate(rest.restaurantId, { planId: plan._id });
+
+    const blockedRes = await request(app)
+      .delete(`/api/platform-admin/plans/${plan._id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(blockedRes.status).toBe(400);
+
+    await Restaurant.findByIdAndUpdate(rest.restaurantId, { planId: null });
+
+    const allowedRes = await request(app)
+      .delete(`/api/platform-admin/plans/${plan._id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(allowedRes.status).toBe(200);
+  });
+
+  it('assigning a plan adds its pages to enabledPages without removing a manually-granted extra page', async () => {
+    await seedDefaultPlans();
+    const growth = await Plan.findOne({ slug: 'growth' });
+    const enterprise = await Plan.findOne({ slug: 'enterprise' });
+
+    const rest = await createAuthedUser(app);
+
+    // Assign Growth first.
+    const assignRes = await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: growth._id.toString() });
+    expect(assignRes.status).toBe(200);
+    expect(assignRes.body.enabledPages.sort()).toEqual([...growth.pages].sort());
+
+    // The admin hand-grants an Enterprise-only page Growth doesn't include —
+    // the exact "comp a friend an extra page" scenario.
+    expect(growth.pages).not.toContain('page.headoffice');
+    const grantRes = await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/pages`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ pages: [...growth.pages, 'page.headoffice'] });
+    expect(grantRes.body.enabledPages).toContain('page.headoffice');
+
+    // Restaurant later changes plan — still Growth, e.g. a renewal — the
+    // manually-granted page.headoffice must survive.
+    const reassignRes = await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: growth._id.toString() });
+    expect(reassignRes.body.enabledPages).toContain('page.headoffice');
+    expect(reassignRes.body.enabledPages.sort()).toEqual([...new Set([...growth.pages, 'page.headoffice'])].sort());
+
+    // Upgrading to Enterprise only ever adds pages on top of that, never drops the manual grant either.
+    const upgradeRes = await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: enterprise._id.toString() });
+    expect(upgradeRes.body.planName).toBe('Enterprise');
+    expect(upgradeRes.body.enabledPages.sort()).toEqual([...enterprise.pages].sort());
+
+    const restaurantAfter = await Restaurant.findById(rest.restaurantId).lean();
+    expect(String(restaurantAfter.planId)).toBe(String(enterprise._id));
+  });
+
+  it('downgrading via assign keeps the higher plan\'s pages until an explicit reset', async () => {
+    await seedDefaultPlans();
+    const growth = await Plan.findOne({ slug: 'growth' });
+    const enterprise = await Plan.findOne({ slug: 'enterprise' });
+
+    const rest = await createAuthedUser(app);
+    await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: enterprise._id.toString() });
+
+    // Picking Growth from the dropdown after being on Enterprise — the
+    // exact scenario reported: the plan name changes, but pages don't
+    // shrink, because assign is additive-only by design.
+    const downgradeRes = await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: growth._id.toString() });
+    expect(downgradeRes.body.planName).toBe('Growth');
+    expect(downgradeRes.body.enabledPages.sort()).toEqual([...enterprise.pages].sort());
+
+    // The explicit reset action is what actually shrinks it, to exactly
+    // the currently-assigned plan's (Growth's) pages.
+    const resetRes = await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan/reset`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(resetRes.status).toBe(200);
+    expect(resetRes.body.planName).toBe('Growth');
+    expect(resetRes.body.enabledPages.sort()).toEqual([...growth.pages].sort());
+
+    const restaurantAfter = await Restaurant.findById(rest.restaurantId).lean();
+    expect(restaurantAfter.enabledPages.sort()).toEqual([...growth.pages].sort());
+  });
+
+  it('reset also strips a manually-granted extra page, since it targets exactly the plan defaults', async () => {
+    await seedDefaultPlans();
+    const growth = await Plan.findOne({ slug: 'growth' });
+    const rest = await createAuthedUser(app);
+    await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: growth._id.toString() });
+    await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/pages`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ pages: [...growth.pages, 'page.headoffice'] });
+
+    const resetRes = await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan/reset`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(resetRes.body.enabledPages).not.toContain('page.headoffice');
+    expect(resetRes.body.enabledPages.sort()).toEqual([...growth.pages].sort());
+  });
+
+  it('reset requires a plan to already be assigned, and requires auth', async () => {
+    const rest = await createAuthedUser(app);
+
+    const noPlanRes = await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan/reset`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(noPlanRes.status).toBe(400);
+
+    const unauthedRes = await request(app).patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan/reset`);
+    expect(unauthedRes.status).toBe(401);
+  });
+
+  it('404s assigning an unknown plan or to an unknown restaurant', async () => {
+    const growth = await Plan.findOne({ slug: 'growth' });
+    const rest = await createAuthedUser(app);
+    const fakeId = new mongoose.Types.ObjectId();
+
+    const badPlan = await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: fakeId.toString() });
+    expect(badPlan.status).toBe(404);
+
+    const badRestaurant = await request(app)
+      .patch(`/api/platform-admin/restaurants/${fakeId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: growth._id.toString() });
+    expect(badRestaurant.status).toBe(404);
+  });
+
+  it('surfaces the assigned plan name (read-only) on tenant login and GET /restaurant', async () => {
+    const growth = await Plan.findOne({ slug: 'growth' });
+    const rest = await createAuthedUser(app);
+    const restAuth = authedRequest(rest.token, rest.locationId);
+
+    const loginBefore = await request(app).post('/api/auth/login').send({ email: rest.email, password: 'testpassword123' });
+    expect(loginBefore.body.restaurant.planName).toBeNull();
+
+    await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: growth._id.toString() });
+
+    const loginAfter = await request(app).post('/api/auth/login').send({ email: rest.email, password: 'testpassword123' });
+    expect(loginAfter.body.restaurant.planName).toBe('Growth');
+
+    const settingsRes = await restAuth(request(app).get('/api/restaurant'));
+    expect(settingsRes.body.planName).toBe('Growth');
+  });
+
+  it('listRestaurants reports the assigned plan name', async () => {
+    const growth = await Plan.findOne({ slug: 'growth' });
+    const rest = await createAuthedUser(app);
+    await request(app)
+      .patch(`/api/platform-admin/restaurants/${rest.restaurantId}/plan`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ planId: growth._id.toString() });
+
+    const listRes = await request(app).get('/api/platform-admin/restaurants').set('Authorization', `Bearer ${adminToken}`);
+    const row = listRes.body.restaurants.find((r) => r.id === rest.restaurantId);
+    expect(row.planName).toBe('Growth');
   });
 });

@@ -698,6 +698,88 @@ export async function cancelTableOrder(req, res) {
   }
 }
 
+// Moves an entire pending order from one table to another — no reason
+// required (unlike void/cancel), since this is a routine floor-management
+// action, not something exceptional that needs to be justified. Order.tableId
+// is the single source of truth for which table an order belongs to, so
+// reassigning that one field carries every line item/discount/tip/customer
+// attachment along with it — nothing needs to be copied.
+export async function switchTable(req, res) {
+  const { tableId } = req.params;
+  const { destinationTableId } = req.body;
+  const { restaurantId, locationId } = req;
+
+  const session = await mongoose.startSession();
+  try {
+    let order;
+    let sourceTable;
+    let destinationTable;
+
+    await session.withTransaction(async () => {
+      if (mongoose.Types.ObjectId.isValid(tableId)) {
+        sourceTable = await Table.findOne({ _id: tableId, restaurantId, locationId }).session(session);
+      }
+      if (!sourceTable && !isNaN(Number(tableId))) {
+        sourceTable = await Table.findOne({ restaurantId, locationId, number: Number(tableId) }).session(session);
+      }
+      if (!sourceTable) {
+        throw Object.assign(new Error(`Table not found for identifier: ${tableId}`), { status: 400 });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(destinationTableId)) {
+        throw Object.assign(new Error('Invalid destination table.'), { status: 400 });
+      }
+      destinationTable = await Table.findOne({ _id: destinationTableId, restaurantId, locationId }).session(session);
+      if (!destinationTable) {
+        throw Object.assign(new Error('Destination table not found.'), { status: 400 });
+      }
+      if (String(sourceTable._id) === String(destinationTable._id)) {
+        throw Object.assign(new Error('Source and destination tables must be different.'), { status: 400 });
+      }
+
+      order = await Order.findOne({ restaurantId, tableId: sourceTable._id, status: 'pending' }).session(session);
+      if (!order) {
+        throw Object.assign(new Error(`No active order found for Table #${sourceTable.number}`), { status: 400 });
+      }
+
+      const destinationHasPending = await Order.exists({
+        restaurantId,
+        tableId: destinationTable._id,
+        status: 'pending',
+      }).session(session);
+      if (destinationHasPending) {
+        throw Object.assign(new Error(`Table #${destinationTable.number} already has an active order.`), { status: 400 });
+      }
+
+      order.tableId = destinationTable._id;
+      await order.save({ session });
+
+      sourceTable.status = 'available';
+      await sourceTable.save({ session });
+
+      destinationTable.status = 'occupied';
+      await destinationTable.save({ session });
+    });
+
+    await logAudit(
+      restaurantId,
+      req.user,
+      `switched Table #${sourceTable.number}'s order to Table #${destinationTable.number}`,
+      locationId
+    );
+
+    emitChange('order');
+    emitChange('table');
+    res.json({ message: 'Table switched successfully', order });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) req.log.error({ err }, 'Error switching table');
+    res.status(status).json({ message: err.status ? err.message : 'Failed to switch table.' });
+  } finally {
+    session.endSession();
+  }
+}
+
 export async function deleteOrder(req, res) {
   try {
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';

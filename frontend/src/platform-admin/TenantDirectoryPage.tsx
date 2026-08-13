@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, ChevronDown, ChevronUp, Mail, Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { Building2, ChevronDown, ChevronUp, Mail, Save, Loader2, CheckCircle2, Trash2, AlertTriangle, X } from 'lucide-react';
 import { platformAdminApi, type TenantRestaurant, type PageCatalogEntry } from './platformAdminApi';
 
 function PageAccessEditor({
@@ -74,11 +74,104 @@ function PageAccessEditor({
   );
 }
 
+function DeleteRestaurantModal({
+  restaurant,
+  onClose,
+  onDeleted,
+}: {
+  restaurant: TenantRestaurant;
+  onClose: () => void;
+  onDeleted: (restaurantId: string) => void;
+}) {
+  const [confirmText, setConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+
+  const canDelete = confirmText.trim() === restaurant.name;
+
+  const handleDelete = async () => {
+    if (!canDelete) return;
+    setError('');
+    setDeleting(true);
+    try {
+      await platformAdminApi.deleteRestaurant(restaurant.id);
+      onDeleted(restaurant.id);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to delete restaurant.');
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md bg-slate-900 border border-rose-500/30 rounded-2xl p-6 shadow-2xl relative">
+        <button
+          onClick={onClose}
+          disabled={deleting}
+          className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 p-1.5 rounded-lg hover:bg-slate-800 transition disabled:opacity-50"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="text-center space-y-2 mb-5">
+          <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-white tracking-tight">Delete {restaurant.name}?</h2>
+          <p className="text-xs text-slate-400">
+            This permanently deletes the restaurant and <strong className="text-slate-300">everything tied to it</strong> —
+            staff, locations, menu, inventory, orders, customers, expenses, all of it. Anyone whose login is only
+            tied to this restaurant will need to register as a brand-new restaurant to use their email again. This
+            cannot be undone.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs">
+            {error}
+          </div>
+        )}
+
+        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+          Type <span className="font-mono text-rose-400">{restaurant.name}</span> to confirm
+        </label>
+        <input
+          type="text"
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          disabled={deleting}
+          placeholder={restaurant.name}
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-rose-500 transition disabled:opacity-50"
+        />
+
+        <div className="flex gap-2.5 mt-5">
+          <button
+            onClick={onClose}
+            disabled={deleting}
+            className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs py-2.5 rounded-xl transition disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={!canDelete || deleting}
+            className="flex-1 inline-flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs py-2.5 rounded-xl transition disabled:opacity-40"
+          >
+            {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            Delete Permanently
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const TenantDirectoryPage: React.FC = () => {
   const [restaurants, setRestaurants] = useState<TenantRestaurant[]>([]);
   const [pages, setPages] = useState<PageCatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TenantRestaurant | null>(null);
 
   useEffect(() => {
     Promise.all([platformAdminApi.listRestaurants(), platformAdminApi.getPageCatalog()])
@@ -91,6 +184,12 @@ export const TenantDirectoryPage: React.FC = () => {
 
   const handleSaved = (restaurantId: string, enabledPages: string[]) => {
     setRestaurants((prev) => prev.map((r) => (r.id === restaurantId ? { ...r, enabledPages } : r)));
+  };
+
+  const handleDeleted = (restaurantId: string) => {
+    setRestaurants((prev) => prev.filter((r) => r.id !== restaurantId));
+    setDeleteTarget(null);
+    if (expandedId === restaurantId) setExpandedId(null);
   };
 
   if (loading) {
@@ -145,11 +244,38 @@ export const TenantDirectoryPage: React.FC = () => {
                     )}
                   </div>
                 </button>
-                {isOpen && <PageAccessEditor restaurant={r} pages={pages} onSaved={handleSaved} />}
+                {isOpen && (
+                  <>
+                    <PageAccessEditor restaurant={r} pages={pages} onSaved={handleSaved} />
+                    <div className="border-t border-slate-800 bg-rose-500/5 p-4 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-rose-400">Danger zone</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Permanently delete this restaurant and all of its data.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setDeleteTarget(r)}
+                        className="inline-flex items-center gap-2 bg-rose-600/10 hover:bg-rose-600 border border-rose-600/40 hover:border-rose-600 text-rose-400 hover:text-white font-bold text-xs px-3.5 py-2 rounded-lg transition shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete Restaurant
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}
         </div>
+      )}
+
+      {deleteTarget && (
+        <DeleteRestaurantModal
+          restaurant={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={handleDeleted}
+        />
       )}
     </div>
   );

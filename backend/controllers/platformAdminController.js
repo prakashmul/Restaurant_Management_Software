@@ -6,6 +6,7 @@ import { PERMISSION_SECTIONS } from '../permissions.js';
 import crypto from 'node:crypto';
 import { generateResetToken, hashResetToken } from '../utils/resetToken.js';
 import { sendEmail } from '../services/notificationService.js';
+import { deleteRestaurantCascade } from '../services/restaurantDeletionService.js';
 
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -68,6 +69,30 @@ export async function updateRestaurantPages(req, res) {
   if (!restaurant) return res.status(404).json({ message: 'Restaurant not found.' });
 
   res.json({ id: restaurant._id, name: restaurant.name, enabledPages: restaurant.enabledPages });
+}
+
+// Irreversible: wipes the restaurant and every document scoped to it (staff,
+// orders, inventory, customers, everything — see restaurantDeletionService.js
+// for the full list). Anyone whose only account tie was this restaurant loses
+// their login and has to register fresh, per the platform admin's own spec.
+export async function deleteRestaurant(req, res) {
+  const restaurant = await Restaurant.findById(req.params.id).select('name');
+  if (!restaurant) {
+    return res.status(404).json({ message: 'Restaurant not found.' });
+  }
+
+  const { deletedCounts, deletedUserCount } = await deleteRestaurantCascade(req.params.id);
+
+  req.log.info(
+    { restaurantId: req.params.id, restaurantName: restaurant.name, deletedCounts, deletedUserCount },
+    'Platform admin deleted a restaurant'
+  );
+
+  res.json({
+    message: `${restaurant.name} and all its data have been deleted.`,
+    deletedCounts,
+    deletedUserCount,
+  });
 }
 
 export async function listAdmins(req, res) {

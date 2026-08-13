@@ -52,12 +52,16 @@ export function createApp({ allowedOrigins }) {
   );
   app.use(express.json());
 
-  // General ceiling on API traffic per IP.
+  // General ceiling on API traffic per IP. The test suite runs hundreds of
+  // supertest requests against a single in-process app per file (all from
+  // the same loopback "IP"), which isn't real traffic the limiter is meant
+  // to guard against — raised well out of the way under vitest so adding
+  // tests doesn't start failing on 429s instead of the assertions they wrote.
   app.use(
     '/api',
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      limit: 300,
+      limit: process.env.NODE_ENV === 'test' ? 100000 : 300,
       standardHeaders: true,
       legacyHeaders: false,
     })

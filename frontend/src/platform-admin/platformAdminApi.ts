@@ -61,6 +61,9 @@ export const platformAdminApi = {
   updateRestaurantPages: async (restaurantId: string, pages: string[]) =>
     (await adminApi.patch(`/restaurants/${restaurantId}/pages`, { pages })).data,
 
+  deleteRestaurant: async (restaurantId: string) =>
+    (await adminApi.delete(`/restaurants/${restaurantId}`)).data as { message: string },
+
   listAdmins: async () => (await adminApi.get('/admins')).data.admins as PlatformAdminSummary[],
 
   inviteAdmin: async (name: string, email: string) =>

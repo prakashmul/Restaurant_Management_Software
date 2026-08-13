@@ -63,25 +63,12 @@ export async function resolveLocationScope(req, res, next) {
   }
 }
 
-// Usage: requireRole('Owner') as a route-specific middleware after requireAuth.
-export function requireRole(...allowedRoles) {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({ message: 'Authentication required.' });
-    }
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ message: 'You do not have permission to perform this action.' });
-    }
-    return next();
-  };
-}
-
 // Usage: requirePermission('orders.void') as a route-specific middleware
-// after requireAuth. Unlike requireRole, this is never satisfied by
-// anything baked into the JWT — it always re-reads the caller's current
-// Role.permissions from the database, so editing a role's permissions (or
-// reassigning someone to a different role) takes effect on their very next
-// request, not on their next login.
+// after requireAuth. This is never satisfied by anything baked into the
+// JWT — it always re-reads the caller's current Role.permissions from the
+// database, so editing a role's permissions (or reassigning someone to a
+// different role) takes effect on their very next request, not on their
+// next login.
 export function requirePermission(permissionKey) {
   return async (req, res, next) => {
     try {

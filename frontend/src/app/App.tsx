@@ -20,10 +20,11 @@ import { TransfersPage } from '../features/transfers/TransfersPage';
 import { CustomersPage } from '../features/customers/CustomersPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { ExpensesPage } from '../features/expenses/ExpensesPage';
+import { ContactPage } from '../features/contact/ContactPage';
 import { LoginModal } from '../auth/LoginModal';
 import { ResetPasswordPage } from '../auth/ResetPasswordPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
-import { AuthProvider, useAuth } from '../auth/AuthContext';
+import { AuthProvider, useAuth, type AuthRestaurant } from '../auth/AuthContext';
 import { OfflineQueueProvider } from '../offline/OfflineQueueContext';
 import { posApi } from '../api/posApi';
 import { PlatformAdminAuthProvider, usePlatformAdminAuth } from '../platform-admin/PlatformAdminAuthContext';
@@ -35,6 +36,24 @@ import { SetAdminPasswordPage } from '../platform-admin/SetAdminPasswordPage';
 // reach it by typing the URL either, not just by it being hidden from nav.
 const PERMISSION_BY_PATH = new Map<string, string | null>(NAV_ITEMS.map((item) => [item.path, item.permission]));
 
+// Dashboard used to be a safe, unconditional redirect target since it could
+// never itself be denied — now that it's a real page.* key like everything
+// else, redirecting an inaccessible page to "/" can land on another
+// inaccessible page and loop. This finds the first NAV_ITEMS entry the
+// current user can actually reach, walking the same order the sidebar
+// renders in; Contact Us sits last with permission: null, so the loop is
+// always guaranteed to land somewhere real even if literally every gated
+// page is denied.
+function getFallbackPath(hasPermission: (key: string) => boolean, currentRestaurant: AuthRestaurant | null): string {
+  for (const item of NAV_ITEMS) {
+    if (item.permission === null) return item.path;
+    if (!hasPermission(item.permission)) continue;
+    if (currentRestaurant?.enabledPages && !currentRestaurant.enabledPages.includes(item.permission)) continue;
+    return item.path;
+  }
+  return '/contact';
+}
+
 function PageGuard({ path, children }: { path: string; children: ReactNode }) {
   const { hasPermission, isOwner, permissionsLoaded, currentRestaurant } = useAuth();
   const permission = PERMISSION_BY_PATH.get(path);
@@ -45,14 +64,22 @@ function PageGuard({ path, children }: { path: string; children: ReactNode }) {
   // would briefly look unpermitted and bounce them to the dashboard.
   if (!isOwner && !permissionsLoaded) return null;
   if (!hasPermission(permission)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={getFallbackPath(hasPermission, currentRestaurant)} replace />;
   }
   // Same AND-gate as Sidebar.tsx's NAV_ITEMS filter, applied at the route
   // level too so a disabled page can't be reached by typing the URL either.
   if (currentRestaurant?.enabledPages && !currentRestaurant.enabledPages.includes(permission)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={getFallbackPath(hasPermission, currentRestaurant)} replace />;
   }
   return <>{children}</>;
+}
+
+// Same reasoning as PageGuard's redirects above — the catch-all for an
+// unmatched URL used to always land safely on "/"; now that Dashboard can
+// itself be denied, it needs the same computed fallback.
+function CatchAllRedirect() {
+  const { hasPermission, currentRestaurant } = useAuth();
+  return <Navigate to={getFallbackPath(hasPermission, currentRestaurant)} replace />;
 }
 
 function AppShell() {
@@ -169,7 +196,7 @@ function AppShell() {
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto">
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
+            <Route path="/" element={<PageGuard path="/"><DashboardPage /></PageGuard>} />
             <Route path="/pos" element={<PageGuard path="/pos"><PosPage /></PageGuard>} />
             <Route path="/kitchen" element={<PageGuard path="/kitchen"><KitchenDisplayPage /></PageGuard>} />
             <Route path="/reservations" element={<PageGuard path="/reservations"><ReservationsPage /></PageGuard>} />
@@ -178,7 +205,7 @@ function AppShell() {
             <Route path="/credits" element={<PageGuard path="/credits"><CreditLedgerPage /></PageGuard>} />
             <Route path="/staff" element={<PageGuard path="/staff"><StaffPage /></PageGuard>} />
             <Route path="/recipe-costing" element={<PageGuard path="/recipe-costing"><RecipeCostingPage /></PageGuard>} />
-            <Route path="/checklists" element={<ChecklistsPage />} />
+            <Route path="/checklists" element={<PageGuard path="/checklists"><ChecklistsPage /></PageGuard>} />
             <Route path="/scheduling" element={<PageGuard path="/scheduling"><SchedulingPage /></PageGuard>} />
             <Route path="/procurement" element={<PageGuard path="/procurement"><ProcurementPage /></PageGuard>} />
             <Route path="/transfers" element={<PageGuard path="/transfers"><TransfersPage /></PageGuard>} />
@@ -188,7 +215,8 @@ function AppShell() {
             <Route path="/head-office" element={<PageGuard path="/head-office"><HeadOfficePage /></PageGuard>} />
             <Route path="/customers" element={<PageGuard path="/customers"><CustomersPage /></PageGuard>} />
             <Route path="/settings" element={<PageGuard path="/settings"><SettingsPage /></PageGuard>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="*" element={<CatchAllRedirect />} />
           </Routes>
         </main>
       </div>

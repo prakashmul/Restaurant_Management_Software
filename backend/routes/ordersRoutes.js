@@ -13,6 +13,7 @@ import {
   refundOrderSchema,
   attachOrderCustomerSchema,
   redeemPointsSchema,
+  switchTableSchema,
 } from '../validators.js';
 import {
   listOrders,
@@ -29,6 +30,7 @@ import {
   attachOrderCustomer,
   redeemLoyaltyPoints,
   exportOrdersCsv,
+  switchTable,
 } from '../controllers/ordersController.js';
 import { partialCreditPay, fullSettleCredit } from '../controllers/creditsController.js';
 
@@ -48,6 +50,7 @@ router.patch('/:id/refund', requirePermission('orders.refund'), validate(refundO
 router.patch('/:orderId/items/:itemId/bump', requirePermission('orders.view'), bumpOrderItem);
 router.patch('/:id/customer', requirePermission('orders.checkout'), validate(attachOrderCustomerSchema), attachOrderCustomer);
 router.patch('/:id/redeem-points', requirePermission('orders.discount'), validate(redeemPointsSchema), redeemLoyaltyPoints);
+router.patch('/table/:tableId/switch', requirePermission('orders.edit'), validate(switchTableSchema), switchTable);
 router.delete('/table/:tableId', requirePermission('orders.void'), cancelTableOrder);
 router.delete('/:id', requirePermission('orders.void'), deleteOrder);
 

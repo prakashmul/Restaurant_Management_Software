@@ -10,12 +10,20 @@ import { migrateToLocations } from './services/locationMigrationService.js';
 import { migrateLocationCurrency } from './services/locationCurrencyMigrationService.js';
 import { migrateToLocationStock } from './services/inventoryStockMigrationService.js';
 import { migrateStockCostPerUnit } from './services/stockCostMigrationService.js';
-import { migrateToRoles, syncBuiltInRolePermissions, migrateCustomRolePageAccess } from './services/roleMigrationService.js';
+import {
+  migrateToRoles,
+  syncBuiltInRolePermissions,
+  migrateCustomRolePageAccess,
+  migrateUniversalPagesToExistingRoles,
+} from './services/roleMigrationService.js';
 import { migrateOrdersToCustomers } from './services/customerService.js';
 import { checkLowStockAndAlert } from './services/lowStockAlertService.js';
 import { sendDailySummaries } from './services/summaryReportService.js';
 import { seedPlatformAdmin } from './services/platformAdminSeedService.js';
-import { migrateGrandfatherEnabledPages } from './services/enabledPagesMigrationService.js';
+import {
+  migrateGrandfatherEnabledPages,
+  migrateGrandfatherDashboardChecklists,
+} from './services/enabledPagesMigrationService.js';
 
 // --- REQUIRED ENVIRONMENT VARIABLES ---
 // Accepts either name — the Atlas-generated .env uses MONGODB_URI.
@@ -51,12 +59,17 @@ mongoose
     await migrateToRoles();
     await syncBuiltInRolePermissions();
     await migrateCustomRolePageAccess();
+    await migrateUniversalPagesToExistingRoles();
     await migrateOrdersToCustomers();
     // Must run before any tenant can log in and see enforcement kick in —
     // grandfathers every pre-existing restaurant to full page access before
     // Sidebar/PageGuard start ANDing enabledPages against the per-role
     // permissions (see Sidebar.tsx, App.tsx's PageGuard).
     await migrateGrandfatherEnabledPages();
+    // Depends on the grandfather migration above having already run —
+    // extends the same "full access" restaurants to include Dashboard/
+    // Checklists now that those became real page.* keys too.
+    await migrateGrandfatherDashboardChecklists();
     await seedPlatformAdmin();
 
     // Low stock: checked every 6 hours, but lowStockAlertService itself only

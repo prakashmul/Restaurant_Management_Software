@@ -6,6 +6,7 @@ import {
   getPageCatalog,
   listRestaurants,
   updateRestaurantPages,
+  deleteRestaurant,
   listAdmins,
   inviteAdmin,
   acceptInvite,
@@ -32,6 +33,7 @@ router.get('/me', getMe);
 router.get('/page-catalog', getPageCatalog);
 router.get('/restaurants', listRestaurants);
 router.patch('/restaurants/:id/pages', updateRestaurantPages);
+router.delete('/restaurants/:id', deleteRestaurant);
 router.get('/admins', listAdmins);
 router.post('/admins/invite', inviteAdmin);
 

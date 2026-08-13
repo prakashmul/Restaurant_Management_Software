@@ -17,6 +17,7 @@ import {
   Tag,
   HandCoins,
   Users,
+  ArrowLeftRight,
 } from 'lucide-react';
 import type { Table, Order } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
@@ -25,6 +26,7 @@ import { posApi } from '../../api/posApi';
 interface TableDetailModalProps {
   table: Table;
   order: Order | undefined;
+  tables: Table[];
   onClose: () => void;
   onAddItems: () => void;
   onPayOrder: (
@@ -33,15 +35,18 @@ interface TableDetailModalProps {
     customerDetails?: { customerName: string; customerPhone: string }
   ) => Promise<void>;
   onVoidOrder: (tableId: string, reason: string) => Promise<void>;
+  onSwitchTable: (sourceTableId: string, destinationTableId: string) => Promise<void>;
 }
 
 export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   table,
   order,
+  tables,
   onClose,
   onAddItems,
   onPayOrder,
   onVoidOrder,
+  onSwitchTable,
 }) => {
   const { currentRestaurant, currentLocation, hasPermission } = useAuth();
   const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
@@ -70,6 +75,11 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   const [tipValue, setTipValue] = useState<string>('');
   const [isApplyingTip, setIsApplyingTip] = useState(false);
   const [tipError, setTipError] = useState('');
+
+  const [isSwitchTableOpen, setIsSwitchTableOpen] = useState(false);
+  const [switchDestinationId, setSwitchDestinationId] = useState('');
+  const [isSwitchingTable, setIsSwitchingTable] = useState(false);
+  const [switchTableError, setSwitchTableError] = useState('');
 
   const displayOrder = updatedOrder || order;
 
@@ -107,7 +117,13 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   const canTip = hasPermission('orders.tip');
   const canAttachCustomer = hasPermission('orders.checkout');
   const canRedeemPoints = hasPermission('orders.discount');
+  const canSwitchTable = hasPermission('orders.edit');
   const pointValueRs = currentRestaurant?.loyaltyPointValueRs ?? 1;
+
+  const availableDestinationTables = tables.filter((t) => {
+    const tId = t._id || t.id || '';
+    return tId && tId !== tableId && t.status === 'available';
+  });
 
   const resetDiscountForm = () => {
     setDiscountType('percent');
@@ -361,6 +377,20 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
     }
   };
 
+  const handleSwitchTable = async () => {
+    if (!tableId || !switchDestinationId) return;
+    setSwitchTableError('');
+    setIsSwitchingTable(true);
+    try {
+      await onSwitchTable(tableId, switchDestinationId);
+      onClose();
+    } catch (err: any) {
+      setSwitchTableError(err?.response?.data?.message || 'Failed to switch table.');
+    } finally {
+      setIsSwitchingTable(false);
+    }
+  };
+
   const handleVoid = async () => {
     if (!tableId) return;
     const reason = window.prompt(`Why are you voiding the order for Table ${table.number}? (required)`);
@@ -435,6 +465,15 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {!paymentSuccess && order && canSwitchTable && (
+              <button
+                onClick={() => setIsSwitchTableOpen(!isSwitchTableOpen)}
+                className="p-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-xl transition"
+                title="Switch Table"
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+              </button>
+            )}
             {!paymentSuccess && (
               <button
                 onClick={() => setIsEditingName(!isEditingName)}
@@ -461,6 +500,57 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
         </div>
 
         <div className="p-6 space-y-6 overflow-y-auto flex-1">
+          {isSwitchTableOpen && (
+            <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-4 space-y-2.5">
+              <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                <ArrowLeftRight className="w-3.5 h-3.5" /> Switch this order to another table
+              </span>
+              {switchTableError && <div className="text-[11px] text-rose-400">{switchTableError}</div>}
+              {availableDestinationTables.length === 0 ? (
+                <p className="text-[11px] text-slate-500">No other available tables to switch to right now.</p>
+              ) : (
+                <>
+                  <select
+                    value={switchDestinationId}
+                    onChange={(e) => setSwitchDestinationId(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="">Select a table…</option>
+                    {availableDestinationTables.map((t) => {
+                      const tId = t._id || t.id || '';
+                      return (
+                        <option key={tId} value={tId}>
+                          Table {t.number}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSwitchTableOpen(false);
+                        setSwitchDestinationId('');
+                        setSwitchTableError('');
+                      }}
+                      className="flex-1 py-1.5 text-[11px] font-bold text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSwitchTable}
+                      disabled={isSwitchingTable || !switchDestinationId}
+                      className="flex-1 py-1.5 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition disabled:opacity-50"
+                    >
+                      {isSwitchingTable ? 'Switching…' : 'Switch Table'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {itemsToDisplay.length === 0 ? (
             <div className="py-8 text-center text-slate-500 text-xs">
               No items available for Table {table.number}.

@@ -1,11 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
+import mongoose from 'mongoose';
 import { setupTestApp } from './helpers/testApp.js';
-import { createAuthedUser } from './helpers/auth.js';
+import { createAuthedUser, authedRequest } from './helpers/auth.js';
 import { hashResetToken } from '../utils/resetToken.js';
 import PlatformAdmin from '../models/PlatformAdmin.js';
 import Restaurant from '../models/Restaurant.js';
-import { migrateGrandfatherEnabledPages } from '../services/enabledPagesMigrationService.js';
+import User from '../models/User.js';
+import StaffMembership from '../models/StaffMembership.js';
+import Location from '../models/Location.js';
+import Expense from '../models/Expense.js';
+import Role from '../models/Role.js';
+import {
+  migrateGrandfatherEnabledPages,
+  migrateGrandfatherDashboardChecklists,
+} from '../services/enabledPagesMigrationService.js';
+import { migrateUniversalPagesToExistingRoles } from '../services/roleMigrationService.js';
 import { PAGE_PERMISSION_KEYS } from '../permissions.js';
 
 let app;
@@ -208,5 +218,130 @@ describe('enabledPages enforcement plumbing', () => {
     const fresh = await createAuthedUser(app);
     const restaurant = await Restaurant.findById(fresh.restaurantId).lean();
     expect(restaurant.enabledPages).toEqual([]);
+  });
+});
+
+describe('restaurant deletion', () => {
+  it('wipes every restaurant-scoped collection and lets the same email register fresh', async () => {
+    const restDel = await createAuthedUser(app);
+    const restDelAuth = authedRequest(restDel.token, restDel.locationId);
+    await restDelAuth(request(app).post('/api/expenses')).send({ category: 'rent', amount: 100, date: '2026-08-01' });
+
+    expect(await Location.countDocuments({ restaurantId: restDel.restaurantId })).toBeGreaterThan(0);
+    expect(await StaffMembership.countDocuments({ restaurantId: restDel.restaurantId })).toBeGreaterThan(0);
+
+    const res = await request(app)
+      .delete(`/api/platform-admin/restaurants/${restDel.restaurantId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.deletedUserCount).toBe(1);
+
+    expect(await Restaurant.findById(restDel.restaurantId)).toBeNull();
+    expect(await StaffMembership.countDocuments({ restaurantId: restDel.restaurantId })).toBe(0);
+    expect(await Location.countDocuments({ restaurantId: restDel.restaurantId })).toBe(0);
+    expect(await Expense.countDocuments({ restaurantId: restDel.restaurantId })).toBe(0);
+    expect(await User.findOne({ email: restDel.email.toLowerCase() })).toBeNull();
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: restDel.email, password: 'testpassword123' });
+    expect(loginRes.status).toBe(400);
+
+    const reregisterRes = await request(app).post('/api/auth/register').send({
+      name: 'Fresh Owner',
+      email: restDel.email,
+      password: 'newpassword123',
+      restaurantName: 'Reborn Restaurant',
+    });
+    expect(reregisterRes.status).toBe(201);
+  });
+
+  it('keeps a User who still has a membership at another restaurant', async () => {
+    const restA = await createAuthedUser(app);
+    const restB = await createAuthedUser(app);
+    const sharedUser = await User.findOne({ email: restA.email.toLowerCase() });
+    const roleB = await Role.findOne({ restaurantId: restB.restaurantId, name: 'Owner' });
+    await StaffMembership.create({
+      userId: sharedUser._id,
+      restaurantId: restB.restaurantId,
+      locationId: null,
+      role: 'Owner',
+      roleId: roleB._id,
+    });
+
+    const res = await request(app)
+      .delete(`/api/platform-admin/restaurants/${restA.restaurantId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.deletedUserCount).toBe(0);
+
+    expect(await User.findOne({ email: restA.email.toLowerCase() })).not.toBeNull();
+    expect(
+      await StaffMembership.countDocuments({ restaurantId: restB.restaurantId, userId: sharedUser._id })
+    ).toBe(1);
+  });
+
+  it('requires platform admin auth', async () => {
+    const rest = await createAuthedUser(app);
+    const res = await request(app).delete(`/api/platform-admin/restaurants/${rest.restaurantId}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('404s for an unknown restaurant id', async () => {
+    const fakeId = new mongoose.Types.ObjectId();
+    const res = await request(app)
+      .delete(`/api/platform-admin/restaurants/${fakeId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('Dashboard/Checklists page-access migration', () => {
+  it('backfills page.dashboard and page.checklists onto every existing role', async () => {
+    const rest = await createAuthedUser(app);
+    const role = await Role.findOne({ restaurantId: rest.restaurantId, name: 'Owner' });
+    // Simulate a role that existed before these two keys did.
+    role.permissions = role.permissions.filter((p) => p !== 'page.dashboard' && p !== 'page.checklists');
+    await role.save();
+
+    await migrateUniversalPagesToExistingRoles();
+
+    const updated = await Role.findById(role._id);
+    expect(updated.permissions).toContain('page.dashboard');
+    expect(updated.permissions).toContain('page.checklists');
+  });
+
+  it('extends a fully-grandfathered restaurant to include Dashboard/Checklists, but leaves a restricted one alone', async () => {
+    const full = await createAuthedUser(app);
+    const originalSeventeen = PAGE_PERMISSION_KEYS.filter(
+      (k) => k !== 'page.dashboard' && k !== 'page.checklists'
+    );
+    await Restaurant.findByIdAndUpdate(full.restaurantId, { enabledPages: originalSeventeen });
+
+    const restricted = await createAuthedUser(app);
+    await Restaurant.findByIdAndUpdate(restricted.restaurantId, { enabledPages: ['page.pos'] });
+
+    await migrateGrandfatherDashboardChecklists();
+
+    const fullAfter = await Restaurant.findById(full.restaurantId).lean();
+    expect(fullAfter.enabledPages).toContain('page.dashboard');
+    expect(fullAfter.enabledPages).toContain('page.checklists');
+
+    const restrictedAfter = await Restaurant.findById(restricted.restaurantId).lean();
+    expect(restrictedAfter.enabledPages).toEqual(['page.pos']);
+  });
+
+  it('a brand-new restaurant has no default access to Dashboard or Checklists', async () => {
+    const fresh = await createAuthedUser(app);
+    const restaurant = await Restaurant.findById(fresh.restaurantId).lean();
+    expect(restaurant.enabledPages).not.toContain('page.dashboard');
+    expect(restaurant.enabledPages).not.toContain('page.checklists');
+  });
+
+  it("a brand-new restaurant's Owner role still has page.dashboard/page.checklists by default", async () => {
+    const fresh = await createAuthedUser(app);
+    const ownerRole = await Role.findOne({ restaurantId: fresh.restaurantId, name: 'Owner' });
+    expect(ownerRole.permissions).toContain('page.dashboard');
+    expect(ownerRole.permissions).toContain('page.checklists');
   });
 });

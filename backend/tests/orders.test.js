@@ -854,3 +854,90 @@ describe('loyalty points', () => {
     expect(afterCustomer.pointsBalance).toBe(0);
   });
 });
+
+describe('switch table', () => {
+  // Lighter than setupOrderFixtures — these tests never pay an order (so
+  // never trigger stock deduction), meaning a real Inventory/MenuItem isn't
+  // needed, just a table and an arbitrary item payload. Keeps this block's
+  // request count down against the shared per-IP rate limiter this file's
+  // other ~46 tests already exercise.
+  async function createTable(number) {
+    const res = await auth(request(app).post('/api/tables')).send({ number, seats: 2 });
+    return res.body._id;
+  }
+  const fakeItem = (label) => ({ menuItemId: `switch-test-${label}`, name: 'Dish', price: 10, quantity: 1 });
+
+  it('moves the entire pending order to the destination table and flips both table statuses, with no reason required', async () => {
+    const sourceTableId = await createTable(900);
+    const destinationTableId = await createTable(901);
+
+    const saved = await auth(request(app).post('/api/orders/save')).send({
+      tableId: sourceTableId,
+      items: [fakeItem('a')],
+    });
+    await auth(request(app).patch(`/api/orders/${saved.body._id}/tip`)).send({ type: 'flat', value: 5 });
+
+    // No `reason` field sent at all — switching a table is routine floor
+    // management, unlike void/cancel which requires one.
+    const switchRes = await auth(
+      request(app).patch(`/api/orders/table/${sourceTableId}/switch`)
+    ).send({ destinationTableId });
+    expect(switchRes.status).toBe(200);
+    expect(switchRes.body.order.tableId).toBe(destinationTableId);
+    expect(switchRes.body.order.tip.amount).toBe(5);
+    expect(switchRes.body.order.items.length).toBe(1);
+
+    const tablesRes = await auth(request(app).get('/api/tables'));
+    const sourceTable = tablesRes.body.find((t) => t._id === sourceTableId);
+    const destinationTable = tablesRes.body.find((t) => t._id === destinationTableId);
+    expect(sourceTable.status).toBe('available');
+    expect(destinationTable.status).toBe('occupied');
+  });
+
+  it('fails when the destination table already has a pending order', async () => {
+    const sourceTableId = await createTable(902);
+    const destinationTableId = await createTable(903);
+
+    await auth(request(app).post('/api/orders/save')).send({ tableId: sourceTableId, items: [fakeItem('b')] });
+    await auth(request(app).post('/api/orders/save')).send({ tableId: destinationTableId, items: [fakeItem('c')] });
+
+    const res = await auth(
+      request(app).patch(`/api/orders/table/${sourceTableId}/switch`)
+    ).send({ destinationTableId });
+    expect(res.status).toBe(400);
+  });
+
+  it('fails when the source table has no pending order', async () => {
+    const sourceTableId = await createTable(904);
+    const destinationTableId = await createTable(905);
+
+    const res = await auth(
+      request(app).patch(`/api/orders/table/${sourceTableId}/switch`)
+    ).send({ destinationTableId });
+    expect(res.status).toBe(400);
+  });
+
+  it('fails when source and destination are the same table', async () => {
+    const tableId = await createTable(906);
+    await auth(request(app).post('/api/orders/save')).send({ tableId, items: [fakeItem('d')] });
+
+    const res = await auth(
+      request(app).patch(`/api/orders/table/${tableId}/switch`)
+    ).send({ destinationTableId: tableId });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a role without orders.edit (Kitchen) from switching tables', async () => {
+    const tableId = await createTable(907);
+    await auth(request(app).post('/api/orders/save')).send({ tableId, items: [fakeItem('e')] });
+    const destinationTableId = await createTable(908);
+
+    const { token: kitchenToken, locationId } = await createAuthedUser(app, { role: 'Kitchen' });
+    const res = await request(app)
+      .patch(`/api/orders/table/${tableId}/switch`)
+      .set('Authorization', `Bearer ${kitchenToken}`)
+      .set('X-Location-Id', locationId)
+      .send({ destinationTableId });
+    expect(res.status).toBe(403);
+  });
+});

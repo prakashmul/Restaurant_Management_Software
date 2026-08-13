@@ -539,6 +539,7 @@ export const PosPage = () => {
       {modalTable && (
         <TableDetailModal
           table={modalTable}
+          tables={tables}
           order={orders.find((o) => {
             const modalId = getId(modalTable);
             const statusStr = o.status as string;
@@ -564,6 +565,12 @@ export const PosPage = () => {
           }}
           onVoidOrder={async (tableId: string, reason: string) => {
             await posApi.cancelTableOrder(tableId, reason);
+            setCurrentCart([]);
+            setModalTable(null);
+            await loadData();
+          }}
+          onSwitchTable={async (sourceTableId: string, destinationTableId: string) => {
+            await posApi.switchTable(sourceTableId, destinationTableId);
             setCurrentCart([]);
             setModalTable(null);
             await loadData();

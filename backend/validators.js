@@ -219,6 +219,10 @@ export const redeemPointsSchema = z.object({
   points: z.coerce.number().int().positive('Enter a positive number of points to redeem.'),
 });
 
+export const switchTableSchema = z.object({
+  destinationTableId: z.string().trim().min(1, 'Select a destination table.'),
+});
+
 export const createReservationSchema = z.object({
   customerName: z.string().trim().min(1, 'A name is required.'),
   customerPhone: z.string().trim().optional(),

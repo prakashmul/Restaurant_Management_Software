@@ -457,6 +457,12 @@ export const posApi = {
   cancelTableOrder: (tableId: any, reason?: string) =>
     API.delete(`/orders/table/${cleanId(tableId)}`, { data: { reason } }).then((r) => r.data),
 
+  switchTable: (tableId: any, destinationTableId: any) =>
+    API.patch<{ message: string; order: Order }>(
+      `/orders/table/${cleanId(tableId)}/switch`,
+      { destinationTableId: cleanId(destinationTableId) }
+    ).then((r) => r.data),
+
   // Orders (Fixed Object ID Serialization & Sanitization)
   getOrders: () => API.get<Order[]>('/orders').then((r) => r.data),
 

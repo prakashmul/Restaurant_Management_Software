@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { posApi } from '../api/posApi';
 import type { OrderItem } from '../types';
-import { enqueueAction, getQueuedActions, removeAction, type QueuedAction } from '../offline/offlineQueue';
+import { enqueueAction, getQueuedActions, removeAction } from '../offline/offlineQueue';
 
 const getId = (item: any): string => {
   if (!item) return '';
@@ -184,5 +184,3 @@ export function useOfflineQueue() {
 
   return { isOnline, pendingCount, saveOrderResilient, payOrderResilient };
 }
-
-export type { QueuedAction };

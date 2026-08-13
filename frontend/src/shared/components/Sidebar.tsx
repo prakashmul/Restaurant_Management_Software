@@ -25,7 +25,8 @@ import {
   ChevronUp,
   LogIn,
   LogOut,
-  ShieldCheck
+  ShieldCheck,
+  MessageCircle
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -46,12 +47,13 @@ interface SidebarProps {
 // from the "Page Access" section of Users & Roles → Roles & Permissions),
 // separate from the finer per-action permissions that control what a role
 // can DO once it's on a page it can see. `permission: null` means every
-// logged-in role can always reach it — Dashboard hosts the shared shift
-// clock and Checklists' daily prep list is intentionally open to all staff
-// regardless of role (see checklistsRoutes.js), so neither has a page.* key
-// at all; there's nothing to toggle.
+// logged-in role can always reach it, and it's excluded from the platform
+// admin's per-restaurant enabledPages toggle entirely — reserved for pages
+// that must never be lockable at all (currently just Contact Us). Dashboard
+// and Checklists used to fall in that bucket too but are now real page.*
+// keys like everything else, toggleable per role and per restaurant.
 export const NAV_ITEMS = [
-  { path: '/', label: 'Dashboard', icon: LayoutGrid, end: true, permission: null },
+  { path: '/', label: 'Dashboard', icon: LayoutGrid, end: true, permission: 'page.dashboard' },
   { path: '/pos', label: 'POS System', icon: Utensils, end: false, permission: 'page.pos' },
   { path: '/kitchen', label: 'Kitchen Display', icon: Flame, end: false, permission: 'page.kitchen' },
   { path: '/inventory', label: 'Inventory', icon: Package, end: false, permission: 'page.inventory' },
@@ -61,7 +63,7 @@ export const NAV_ITEMS = [
   { path: '/reservations', label: 'Reservations', icon: CalendarClock, end: false, permission: 'page.reservations' },
   { path: '/head-office', label: 'Head Office', icon: Building2, end: false, permission: 'page.headoffice' },
   { path: '/recipe-costing', label: 'Recipe Costing', icon: ChefHat, end: false, permission: 'page.recipecosting' },
-  { path: '/checklists', label: 'Checklists', icon: ClipboardCheck, end: false, permission: null },
+  { path: '/checklists', label: 'Checklists', icon: ClipboardCheck, end: false, permission: 'page.checklists' },
   { path: '/scheduling', label: 'Staff Schedule', icon: CalendarDays, end: false, permission: 'page.scheduling' },
   { path: '/procurement', label: 'Procurement', icon: Truck, end: false, permission: 'page.procurement' },
   { path: '/transfers', label: 'Transfers', icon: ArrowLeftRight, end: false, permission: 'page.transfers' },
@@ -70,6 +72,10 @@ export const NAV_ITEMS = [
   { path: '/audit-log', label: 'Audit Log', icon: History, end: false, permission: 'page.auditlog' },
   { path: '/expenses', label: 'Expenses', icon: Receipt, end: false, permission: 'page.expenses' },
   { path: '/settings', label: 'Settings', icon: Settings, end: false, permission: 'page.settings' },
+  // No permission key on purpose — every account should always be able to
+  // reach support, regardless of role or the platform admin's per-restaurant
+  // page-access toggle (see enabledPages). The only page left in this bucket.
+  { path: '/contact', label: 'Contact Us', icon: MessageCircle, end: false, permission: null },
 ] as const;
 
 export const Sidebar: React.FC<SidebarProps> = ({

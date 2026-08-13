@@ -140,6 +140,42 @@ const PAGE_KEY_TO_LEGACY_PERMISSION = {
   'page.settings': 'settings.restaurant',
 };
 
+// Dashboard and Checklists were unconditionally visible to every role until
+// they became real page.* keys — unlike migrateCustomRolePageAccess above,
+// there's no legacy indicator permission to infer from, since access was
+// simply never gated in the first place. Every existing role (built-in and
+// custom alike) already had de facto access, so this just adds the two keys
+// unconditionally rather than inferring who "should" have them. Idempotent,
+// additive-only, safe to run on every boot. syncBuiltInRolePermissions above
+// already covers built-in roles going forward via DEFAULT_ROLE_PERMISSIONS,
+// but it only ever grants what's *currently* in DEFAULT_ROLE_PERMISSIONS, so
+// this still needs to run once for every role that already existed before
+// these two keys were added.
+export async function migrateUniversalPagesToExistingRoles() {
+  try {
+    const newlyGatedKeys = ['page.dashboard', 'page.checklists'];
+    const roles = await Role.find({
+      permissions: { $not: { $all: newlyGatedKeys } },
+    });
+    let totalUpdated = 0;
+
+    for (const role of roles) {
+      const missing = newlyGatedKeys.filter((k) => !role.permissions.includes(k));
+      if (missing.length === 0) continue;
+
+      role.permissions = [...role.permissions, ...missing];
+      await role.save();
+      totalUpdated += 1;
+    }
+
+    if (totalUpdated > 0) {
+      logger.info(`Backfilled Dashboard/Checklists page access onto ${totalUpdated} pre-existing role document(s).`);
+    }
+  } catch (err) {
+    logger.error({ err }, 'Universal page-access backfill failed');
+  }
+}
+
 export async function migrateCustomRolePageAccess() {
   try {
     const roles = await Role.find({ name: { $nin: BUILT_IN_ROLE_NAMES } });

@@ -6,13 +6,16 @@ export const PERMISSION_SECTIONS = [
     // Coarse, page-level gate — a role without a page's key here never sees
     // it in the sidebar and can't reach it by URL either, regardless of
     // what finer per-action permissions (below) it's also been granted.
-    // Dashboard and Checklists aren't listed: both stay visible to every
-    // role no matter what (Dashboard hosts the shared shift clock;
-    // Checklists' daily prep list is intentionally open to all staff — see
-    // the comment on checklistsRoutes.js's GET /today route).
+    // Dashboard and Checklists used to be excluded from this list entirely
+    // (unconditionally visible to every role) — they're real page.* keys
+    // now too, same as everything else here. checklistsRoutes.js's GET
+    // /today route is still open to any authenticated staff member
+    // regardless of role — that's a separate, API-level concern from this
+    // page-level Sidebar/PageGuard gate.
     key: 'pages',
     label: 'Page Access',
     permissions: [
+      { key: 'page.dashboard', label: 'Dashboard' },
       { key: 'page.pos', label: 'POS System' },
       { key: 'page.kitchen', label: 'Kitchen Display' },
       { key: 'page.inventory', label: 'Inventory' },
@@ -22,6 +25,7 @@ export const PERMISSION_SECTIONS = [
       { key: 'page.reservations', label: 'Reservations' },
       { key: 'page.headoffice', label: 'Head Office' },
       { key: 'page.recipecosting', label: 'Recipe Costing' },
+      { key: 'page.checklists', label: 'Checklists' },
       { key: 'page.scheduling', label: 'Staff Schedule' },
       { key: 'page.procurement', label: 'Procurement' },
       { key: 'page.transfers', label: 'Transfers' },
@@ -144,6 +148,7 @@ export const PAGE_PERMISSION_KEYS = PERMISSION_SECTIONS.find((s) => s.key === 'p
 export const DEFAULT_ROLE_PERMISSIONS = {
   Owner: [...ALL_PERMISSIONS],
   Manager: [
+    'page.dashboard', 'page.checklists',
     'page.pos', 'page.kitchen', 'page.inventory', 'page.orders', 'page.credits', 'page.customers',
     'page.reservations', 'page.recipecosting', 'page.scheduling', 'page.procurement', 'page.transfers', 'page.staff', 'page.expenses',
     'dash', 'tables', 'staff.view', 'customers',
@@ -156,18 +161,21 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'settings.staff', 'expenses.view', 'expenses.manage',
   ],
   Cashier: [
+    'page.dashboard', 'page.checklists',
     'page.pos', 'page.kitchen', 'page.inventory', 'page.orders', 'page.credits', 'page.customers',
     'page.reservations', 'page.scheduling', 'page.procurement', 'page.transfers',
     'tables', 'customers', 'orders.view', 'orders.checkout', 'orders.tip', 'orders.credit', 'menu.view', 'stock.view', 'credit.view', 'credit.settle',
     'procurement.view', 'transfers.view', 'scheduling.view', 'reservations.view', 'reservations.manage',
   ],
   Waiter: [
+    'page.dashboard', 'page.checklists',
     'page.pos', 'page.kitchen', 'page.inventory', 'page.orders', 'page.credits', 'page.customers',
     'page.reservations', 'page.scheduling', 'page.procurement', 'page.transfers',
     'tables', 'customers', 'orders.view', 'orders.edit', 'orders.checkout', 'orders.tip', 'menu.view', 'stock.view', 'credit.view',
     'procurement.view', 'transfers.view', 'scheduling.view', 'reservations.view', 'reservations.manage',
   ],
   Kitchen: [
+    'page.dashboard', 'page.checklists',
     'page.kitchen', 'page.inventory', 'page.orders', 'page.scheduling', 'page.procurement', 'page.transfers',
     'orders.view', 'menu.view', 'stock.view', 'stock.edit',
     'procurement.view', 'transfers.view', 'scheduling.view',

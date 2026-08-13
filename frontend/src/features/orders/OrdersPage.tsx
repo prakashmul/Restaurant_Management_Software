@@ -292,6 +292,9 @@ export const OrdersPage: React.FC = () => {
     const items = ord.items || [];
     const subtotal = ord.subtotal ?? items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 0), 0);
     const total = ord.total ?? subtotal;
+    const discount = ord.discount && ord.discount.type ? ord.discount : null;
+    const tip = ord.tip && ord.tip.type ? ord.tip : null;
+    const tax = ord.tax || 0;
     const createdAt = ord.createdAt ? new Date(ord.createdAt).toLocaleString() : 'N/A';
     const tableNum = getTableNumber(ord.tableId);
 
@@ -361,6 +364,9 @@ export const OrdersPage: React.FC = () => {
             </table>
             <div class="totals">
               <div><span>Subtotal:</span><span>${currency}${subtotal.toFixed(2)}</span></div>
+              ${discount ? `<div><span>Discount${discount.type === 'percent' ? ` (${discount.value}%)` : ''}${discount.reason ? ` — ${escapeHtml(discount.reason)}` : ''}:</span><span>- ${currency}${discount.amount.toFixed(2)}</span></div>` : ''}
+              ${tax ? `<div><span>Tax:</span><span>${currency}${tax.toFixed(2)}</span></div>` : ''}
+              ${tip ? `<div><span>Tip${tip.type === 'percent' ? ` (${tip.value}%)` : ''}:</span><span>+ ${currency}${tip.amount.toFixed(2)}</span></div>` : ''}
               <div class="grand-total"><span>TOTAL:</span><span>${currency}${total.toFixed(2)}</span></div>
             </div>
             <div class="footer">
@@ -676,6 +682,28 @@ export const OrdersPage: React.FC = () => {
                           <span>Subtotal:</span>
                           <span>{currency}{subtotal.toFixed(2)}</span>
                         </div>
+                        {ord.discount && ord.discount.type && (
+                          <div className="flex justify-between w-full max-w-xs text-emerald-400">
+                            <span>
+                              Discount {ord.discount.type === 'percent' ? `(${ord.discount.value}%)` : ''}
+                              {ord.discount.reason && <span className="text-slate-500"> — {ord.discount.reason}</span>}
+                              :
+                            </span>
+                            <span>- {currency}{ord.discount.amount.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {!!ord.tax && (
+                          <div className="flex justify-between w-full max-w-xs text-slate-400">
+                            <span>Tax:</span>
+                            <span>{currency}{ord.tax.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {ord.tip && ord.tip.type && (
+                          <div className="flex justify-between w-full max-w-xs text-amber-400">
+                            <span>Tip {ord.tip.type === 'percent' ? `(${ord.tip.value}%)` : ''}:</span>
+                            <span>+ {currency}{ord.tip.amount.toFixed(2)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between w-full max-w-xs font-bold text-sm text-slate-100 pt-1 border-t border-slate-800">
                           <span>Total Order Amount:</span>
                           <span className={isPartiallyRefunded ? 'text-slate-500 line-through' : 'text-emerald-400'}>

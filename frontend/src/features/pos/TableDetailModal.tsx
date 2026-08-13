@@ -1009,6 +1009,27 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
               <span>Subtotal:</span>
               <span>{currency}{subtotal.toFixed(2)}</span>
             </div>
+            {discount && (
+              <div>
+                <span>
+                  Discount {discount.type === 'percent' ? `(${discount.value}%)` : ''}
+                  {discount.reason ? ` — ${discount.reason}` : ''}:
+                </span>
+                <span>- {currency}{discount.amount.toFixed(2)}</span>
+              </div>
+            )}
+            {!!tax && (
+              <div>
+                <span>Tax:</span>
+                <span>{currency}{tax.toFixed(2)}</span>
+              </div>
+            )}
+            {tip && (
+              <div>
+                <span>Tip {tip.type === 'percent' ? `(${tip.value}%)` : ''}:</span>
+                <span>+ {currency}{tip.amount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="grand-total">
               <span>TOTAL:</span>
               <span>{currency}{total.toFixed(2)}</span>

@@ -265,6 +265,20 @@ export const updateLocationSchema = z.object({
     .optional(),
 });
 
+// A dedicated, narrower schema than updateLocationSchema's own optional
+// geofence sub-object — this is the only thing the locations.geofence
+// permission is allowed to touch, gated separately from locations.manage.
+export const updateLocationGeofenceSchema = z
+  .object({
+    latitude: z.coerce.number().min(-90).max(90).nullable(),
+    longitude: z.coerce.number().min(-180).max(180).nullable(),
+    radiusMeters: z.coerce.number().positive().optional().default(300),
+  })
+  .refine((data) => (data.latitude === null) === (data.longitude === null), {
+    message: 'Latitude and longitude must both be set, or both cleared.',
+    path: ['latitude'],
+  });
+
 export const createVendorSchema = z.object({
   name: z.string().trim().min(1, 'Vendor name is required.'),
   category: z.string().trim().min(1, 'Category is required.'),

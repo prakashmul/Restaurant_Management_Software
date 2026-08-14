@@ -708,6 +708,11 @@ export const posApi = {
   updateLocation: (id: string, data: Partial<Pick<Location, 'name' | 'address' | 'phone' | 'currency' | 'isActive'>>) =>
     API.patch<Location>(`/locations/${id}`, data).then((r) => r.data),
 
+  updateLocationGeofence: (
+    id: string,
+    data: { latitude: number | null; longitude: number | null; radiusMeters?: number }
+  ) => API.patch<Location>(`/locations/${id}/geofence`, data).then((r) => r.data),
+
   deleteLocation: (id: string) => API.delete(`/locations/${id}`).then((r) => r.data),
 
   // Head Office

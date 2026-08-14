@@ -131,6 +131,11 @@ export const PERMISSION_SECTIONS = [
       { key: 'settings.restaurant', label: 'Restaurant & billing settings' },
       { key: 'settings.headoffice', label: 'Head Office (multi-location)' },
       { key: 'locations.manage', label: 'Add, edit & delete locations' },
+      // Deliberately separate from locations.manage — a role could be
+      // trusted to rename/add locations without also being able to move
+      // the attendance geofence, which affects every staff member's
+      // ability to clock in at that location.
+      { key: 'locations.geofence', label: 'Set attendance geofence (lat/long)' },
     ],
   },
 ];

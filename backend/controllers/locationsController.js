@@ -40,6 +40,36 @@ export async function updateLocation(req, res) {
   }
 }
 
+// Split out from the general updateLocation above so it can sit behind its
+// own, narrower locations.geofence permission — moving the attendance
+// geofence is a more sensitive action than renaming a branch or updating
+// its phone number, since it affects whether every staff member at this
+// location can clock in at all.
+export async function updateLocationGeofence(req, res) {
+  try {
+    const { latitude, longitude, radiusMeters } = req.body;
+    const location = await Location.findOneAndUpdate(
+      { _id: req.params.id, restaurantId: req.restaurantId },
+      { geofence: { latitude, longitude, radiusMeters } },
+      { returnDocument: 'after' }
+    );
+    if (!location) {
+      return res.status(404).json({ message: 'Location not found' });
+    }
+    await logAudit(
+      req.restaurantId,
+      req.user,
+      latitude === null
+        ? `cleared the attendance geofence for "${location.name}"`
+        : `set the attendance geofence for "${location.name}" (${radiusMeters}m radius)`
+    );
+    res.json(location);
+  } catch (err) {
+    req.log.error({ err }, 'Error updating location geofence');
+    res.status(500).json({ error: 'Failed to update geofence' });
+  }
+}
+
 export async function deleteLocation(req, res) {
   try {
     const { restaurantId } = req;

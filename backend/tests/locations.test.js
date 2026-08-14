@@ -120,6 +120,50 @@ describe('locations', () => {
     expect(res.status).toBe(400);
   });
 
+  it('lets the Owner set and clear a location\'s attendance geofence', async () => {
+    const setRes = await asOwner(request(app).patch(`/api/locations/${secondLocationId}/geofence`)).send({
+      latitude: 27.7172,
+      longitude: 85.324,
+      radiusMeters: 150,
+    });
+    expect(setRes.status).toBe(200);
+    expect(setRes.body.geofence).toEqual({ latitude: 27.7172, longitude: 85.324, radiusMeters: 150 });
+
+    const clearRes = await asOwner(request(app).patch(`/api/locations/${secondLocationId}/geofence`)).send({
+      latitude: null,
+      longitude: null,
+    });
+    expect(clearRes.status).toBe(200);
+    expect(clearRes.body.geofence.latitude).toBeNull();
+    expect(clearRes.body.geofence.longitude).toBeNull();
+    // radiusMeters defaults back rather than being left at the old value —
+    // a full replace, not a merge.
+    expect(clearRes.body.geofence.radiusMeters).toBe(300);
+  });
+
+  it('rejects a non-Owner (no locations.geofence by default) from setting the geofence, even with locations.manage-adjacent roles', async () => {
+    const { token: waiterToken, locationId: waiterLocationId } = await createAuthedUser(app, { role: 'Waiter' });
+    const res = await request(app)
+      .patch(`/api/locations/${waiterLocationId}/geofence`)
+      .set('Authorization', `Bearer ${waiterToken}`)
+      .send({ latitude: 27.7, longitude: 85.3 });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects out-of-range coordinates and a latitude/longitude mismatch', async () => {
+    const outOfRange = await asOwner(request(app).patch(`/api/locations/${secondLocationId}/geofence`)).send({
+      latitude: 200,
+      longitude: 85.3,
+    });
+    expect(outOfRange.status).toBe(400);
+
+    const mismatched = await asOwner(request(app).patch(`/api/locations/${secondLocationId}/geofence`)).send({
+      latitude: 27.7,
+      longitude: null,
+    });
+    expect(mismatched.status).toBe(400);
+  });
+
   it('confines a location-restricted staff member to their assigned location regardless of the X-Location-Id header', async () => {
     const { token: waiterToken, inviteRes } = await inviteAndLoginStaff(app, asOwner, {
       name: 'Confined Waiter',

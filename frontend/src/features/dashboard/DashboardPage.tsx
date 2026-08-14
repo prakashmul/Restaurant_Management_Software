@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   MapPin, Clock, History, CheckCircle2, XCircle, Coffee,
   Play, Printer, Calendar, DollarSign, TrendingUp, ShoppingBag, CreditCard,
-  PiggyBank, Wallet, AlertTriangle
+  PiggyBank, Wallet, AlertTriangle, Crosshair, Save
 } from 'lucide-react';
 import { posApi } from '../../api/posApi';
 import type { DashboardSummary } from '../../api/posApi';
@@ -61,7 +61,7 @@ interface OrderRecord {
 }
 
 export const DashboardPage: React.FC = () => {
-  const { currentUser: authUser, currentRestaurant, currentLocation, isOwner } = useAuth();
+  const { currentUser: authUser, currentRestaurant, currentLocation, isOwner, hasPermission, setCurrentLocation } = useAuth();
   const currentUser = authUser?.name || 'Current Employee';
   const currency = currentLocation?.currency || currentRestaurant?.currency || 'Rs.';
 
@@ -72,6 +72,95 @@ export const DashboardPage: React.FC = () => {
   const geofenceLongitude = currentLocation?.geofence?.longitude ?? null;
   const isGeofenceConfigured = geofenceLatitude !== null && geofenceLongitude !== null;
   const allowedRadiusMeters = currentLocation?.geofence?.radiusMeters ?? 300;
+
+  const canEditGeofence = hasPermission('locations.geofence');
+  const [geofenceForm, setGeofenceForm] = useState({
+    latitude: geofenceLatitude !== null ? String(geofenceLatitude) : '',
+    longitude: geofenceLongitude !== null ? String(geofenceLongitude) : '',
+    radiusMeters: String(allowedRadiusMeters),
+  });
+  const [isLocatingDevice, setIsLocatingDevice] = useState(false);
+  const [isSavingGeofence, setIsSavingGeofence] = useState(false);
+  const [geofenceFormError, setGeofenceFormError] = useState<string | null>(null);
+  const [geofenceFormSuccess, setGeofenceFormSuccess] = useState<string | null>(null);
+
+  // Re-sync the form whenever the active location changes (switching
+  // branches, or another tab saving a new value) — otherwise a stale
+  // location's coordinates would linger in the inputs.
+  useEffect(() => {
+    setGeofenceForm({
+      latitude: geofenceLatitude !== null ? String(geofenceLatitude) : '',
+      longitude: geofenceLongitude !== null ? String(geofenceLongitude) : '',
+      radiusMeters: String(allowedRadiusMeters),
+    });
+    setGeofenceFormError(null);
+    setGeofenceFormSuccess(null);
+  }, [currentLocation?.id, geofenceLatitude, geofenceLongitude, allowedRadiusMeters]);
+
+  const handleUseDeviceLocation = () => {
+    if (!navigator.geolocation) {
+      setGeofenceFormError('Geolocation is not supported on this device.');
+      return;
+    }
+    setGeofenceFormError(null);
+    setIsLocatingDevice(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGeofenceForm((prev) => ({
+          ...prev,
+          latitude: String(position.coords.latitude),
+          longitude: String(position.coords.longitude),
+        }));
+        setIsLocatingDevice(false);
+      },
+      (err) => {
+        setGeofenceFormError(err.message || 'Could not read this device\'s location.');
+        setIsLocatingDevice(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSaveGeofence = async () => {
+    if (!currentLocation) return;
+    const lat = geofenceForm.latitude.trim() === '' ? null : Number(geofenceForm.latitude);
+    const lng = geofenceForm.longitude.trim() === '' ? null : Number(geofenceForm.longitude);
+    const radius = Number(geofenceForm.radiusMeters) || 300;
+
+    if ((lat === null) !== (lng === null)) {
+      setGeofenceFormError('Set both latitude and longitude, or clear both.');
+      return;
+    }
+    if (lat !== null && (Number.isNaN(lat) || lat < -90 || lat > 90)) {
+      setGeofenceFormError('Latitude must be between -90 and 90.');
+      return;
+    }
+    if (lng !== null && (Number.isNaN(lng) || lng < -180 || lng > 180)) {
+      setGeofenceFormError('Longitude must be between -180 and 180.');
+      return;
+    }
+
+    setGeofenceFormError(null);
+    setGeofenceFormSuccess(null);
+    setIsSavingGeofence(true);
+    try {
+      const updated = await posApi.updateLocationGeofence(currentLocation.id, {
+        latitude: lat,
+        longitude: lng,
+        radiusMeters: radius,
+      });
+      setCurrentLocation({ ...currentLocation, geofence: updated.geofence });
+      setGeofenceFormSuccess(lat === null ? 'Geofence cleared.' : 'Geofence saved.');
+    } catch (err: any) {
+      setGeofenceFormError(err?.response?.data?.message || 'Failed to save the geofence.');
+    } finally {
+      setIsSavingGeofence(false);
+    }
+  };
+
+  const handleClearGeofence = () => {
+    setGeofenceForm((prev) => ({ ...prev, latitude: '', longitude: '' }));
+  };
 
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [isOnBreak, setIsOnBreak] = useState(false);
@@ -702,6 +791,95 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <SalesTrendChart orders={orders} />
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ATTENDANCE GEOFENCE (Owner-only, or anyone granted the      */}
+      {/* locations.geofence permission from Users & Roles)           */}
+      {/* ========================================================= */}
+      {canEditGeofence && currentLocation && (
+        <div className="print:hidden bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
+          <div className="border-b border-slate-800 pb-4">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-indigo-400" /> Attendance Geofence
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Set the coordinates staff must be within to clock in/out at{' '}
+              <strong className="text-indigo-300">{currentLocation.name}</strong>. Leave blank to allow
+              check-in from anywhere.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Latitude</label>
+              <input
+                type="number"
+                step="any"
+                value={geofenceForm.latitude}
+                onChange={(e) => setGeofenceForm((prev) => ({ ...prev, latitude: e.target.value }))}
+                placeholder="e.g. 27.7172"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Longitude</label>
+              <input
+                type="number"
+                step="any"
+                value={geofenceForm.longitude}
+                onChange={(e) => setGeofenceForm((prev) => ({ ...prev, longitude: e.target.value }))}
+                placeholder="e.g. 85.3240"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Radius (meters)</label>
+              <input
+                type="number"
+                min={1}
+                value={geofenceForm.radiusMeters}
+                onChange={(e) => setGeofenceForm((prev) => ({ ...prev, radiusMeters: e.target.value }))}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          {geofenceFormError && (
+            <p className="text-xs text-rose-400">{geofenceFormError}</p>
+          )}
+          {geofenceFormSuccess && !geofenceFormError && (
+            <p className="text-xs text-emerald-400">{geofenceFormSuccess}</p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleUseDeviceLocation}
+              disabled={isLocatingDevice}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 disabled:opacity-50 transition"
+            >
+              <Crosshair className="w-3.5 h-3.5" />
+              {isLocatingDevice ? 'Locating…' : 'Use my current location'}
+            </button>
+            <button
+              type="button"
+              onClick={handleClearGeofence}
+              className="px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveGeofence}
+              disabled={isSavingGeofence}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 transition ml-auto"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {isSavingGeofence ? 'Saving…' : 'Save Geofence'}
+            </button>
+          </div>
         </div>
       )}
 

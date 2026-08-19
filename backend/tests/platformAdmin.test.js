@@ -93,7 +93,10 @@ describe('platform admin tenant directory', () => {
     const found = res.body.restaurants.find((r) => r.id === tenant.restaurantId);
     expect(found).toBeTruthy();
     expect(found.owner.email).toBe(tenant.email.toLowerCase());
-    expect(found.enabledPages).toEqual([]);
+    // createAuthedUser provisions a fully-enabled restaurant by default (see
+    // helpers/auth.js) — the true register()-only default is covered
+    // separately below, in 'enabledPages enforcement plumbing'.
+    expect(found.enabledPages.sort()).toEqual([...PAGE_PERMISSION_KEYS].sort());
   });
 
   it('returns the page catalog', async () => {
@@ -111,13 +114,23 @@ describe('platform admin tenant directory', () => {
     expect(res.body.enabledPages.sort()).toEqual(['page.orders', 'page.pos']);
   });
 
-  it('does not change any existing tenant-facing behavior — Sidebar/page routing is untouched by this toggle', async () => {
+  it('is now enforced server-side too, not just hidden in the Sidebar', async () => {
+    // The PATCH above restricted this tenant to just page.orders/page.pos —
+    // menu.view requires page.inventory, which is no longer enabled, so the
+    // backend itself must reject this, not just the frontend Sidebar.
     const loginRes = await request(app).post('/api/auth/login').send({ email: tenant.email, password: 'testpassword123' });
-    const posRes = await request(app)
+    const menuRes = await request(app)
       .get('/api/menu')
       .set('Authorization', `Bearer ${loginRes.body.token}`)
       .set('X-Location-Id', tenant.locationId);
-    expect(posRes.status).toBe(200);
+    expect(menuRes.status).toBe(403);
+
+    // A route requiring only a still-enabled page keeps working.
+    const tablesRes = await request(app)
+      .get('/api/tables')
+      .set('Authorization', `Bearer ${loginRes.body.token}`)
+      .set('X-Location-Id', tenant.locationId);
+    expect(tablesRes.status).toBe(200);
   });
 });
 
@@ -217,8 +230,16 @@ describe('enabledPages enforcement plumbing', () => {
   });
 
   it('a brand-new restaurant created via register() starts with enabledPages: []', async () => {
-    const fresh = await createAuthedUser(app);
-    const restaurant = await Restaurant.findById(fresh.restaurantId).lean();
+    // createAuthedUser deliberately provisions full access for the rest of
+    // the suite (see helpers/auth.js) — call register() directly here to
+    // see the real, unmodified default.
+    const registerRes = await request(app).post('/api/auth/register').send({
+      name: 'Raw Register Test',
+      email: `raw-register-${Date.now()}@example.com`,
+      password: 'testpassword123',
+      restaurantName: `Raw Register Restaurant ${Date.now()}`,
+    });
+    const restaurant = await Restaurant.findById(registerRes.body.restaurant.id).lean();
     expect(restaurant.enabledPages).toEqual([]);
   });
 });
@@ -334,8 +355,15 @@ describe('Dashboard/Checklists page-access migration', () => {
   });
 
   it('a brand-new restaurant has no default access to Dashboard or Checklists', async () => {
-    const fresh = await createAuthedUser(app);
-    const restaurant = await Restaurant.findById(fresh.restaurantId).lean();
+    // Same reason as above — bypass createAuthedUser's default provisioning
+    // to see register()'s real, unmodified output.
+    const registerRes = await request(app).post('/api/auth/register').send({
+      name: 'Raw Register Test 2',
+      email: `raw-register-2-${Date.now()}@example.com`,
+      password: 'testpassword123',
+      restaurantName: `Raw Register Restaurant 2 ${Date.now()}`,
+    });
+    const restaurant = await Restaurant.findById(registerRes.body.restaurant.id).lean();
     expect(restaurant.enabledPages).not.toContain('page.dashboard');
     expect(restaurant.enabledPages).not.toContain('page.checklists');
   });
@@ -421,6 +449,10 @@ describe('subscription plans', () => {
     const enterprise = await Plan.findOne({ slug: 'enterprise' });
 
     const rest = await createAuthedUser(app);
+    // This test is specifically about the additive-union starting from a
+    // real baseline — createAuthedUser provisions full access by default
+    // for the rest of the suite, so reset to empty here first.
+    await Restaurant.findByIdAndUpdate(rest.restaurantId, { enabledPages: [] });
 
     // Assign Growth first.
     const assignRes = await request(app)

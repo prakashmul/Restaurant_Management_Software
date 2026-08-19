@@ -40,102 +40,102 @@ export const PERMISSION_SECTIONS = [
     key: 'general',
     label: 'General',
     permissions: [
-      { key: 'dash', label: 'View Dashboard' },
-      { key: 'tables', label: 'View & edit tables' },
-      { key: 'staff.view', label: 'View staff list' },
-      { key: 'customers', label: 'View & edit customers' },
+      { key: 'dash', label: 'View Dashboard', requiresPage: 'page.dashboard' },
+      { key: 'tables', label: 'View & edit tables', requiresPage: 'page.pos' },
+      { key: 'staff.view', label: 'View staff list', requiresPage: 'page.staff' },
+      { key: 'customers', label: 'View & edit customers', requiresPage: 'page.customers' },
     ],
   },
   {
     key: 'orders',
     label: 'Orders & Payment',
     permissions: [
-      { key: 'orders.view', label: 'View orders' },
-      { key: 'orders.edit', label: 'Create / edit orders' },
-      { key: 'orders.checkout', label: 'Checkout & take payment' },
-      { key: 'orders.void', label: 'Void / cancel an order' },
-      { key: 'orders.discount', label: 'Apply discounts' },
-      { key: 'orders.tip', label: 'Add / edit tips' },
-      { key: 'orders.credit', label: 'Record on customer credit' },
-      { key: 'orders.refund', label: 'Refund a paid, credited, or settled order' },
+      { key: 'orders.view', label: 'View orders', requiresPage: 'page.pos' },
+      { key: 'orders.edit', label: 'Create / edit orders', requiresPage: 'page.pos' },
+      { key: 'orders.checkout', label: 'Checkout & take payment', requiresPage: 'page.pos' },
+      { key: 'orders.void', label: 'Void / cancel an order', requiresPage: 'page.pos' },
+      { key: 'orders.discount', label: 'Apply discounts', requiresPage: 'page.pos' },
+      { key: 'orders.tip', label: 'Add / edit tips', requiresPage: 'page.pos' },
+      { key: 'orders.credit', label: 'Record on customer credit', requiresPage: 'page.pos' },
+      { key: 'orders.refund', label: 'Refund a paid, credited, or settled order', requiresPage: 'page.orders' },
     ],
   },
   {
     key: 'menu',
     label: 'Menu & Inventory',
     permissions: [
-      { key: 'menu.view', label: 'View menu & categories' },
-      { key: 'menu.edit', label: 'Edit menu, prices & categories' },
-      { key: 'stock.view', label: 'View stock levels' },
-      { key: 'stock.edit', label: 'Restock / adjust inventory' },
-      { key: 'stock.history', label: 'View stock movement history' },
+      { key: 'menu.view', label: 'View menu & categories', requiresPage: 'page.inventory' },
+      { key: 'menu.edit', label: 'Edit menu, prices & categories', requiresPage: 'page.inventory' },
+      { key: 'stock.view', label: 'View stock levels', requiresPage: 'page.inventory' },
+      { key: 'stock.edit', label: 'Restock / adjust inventory', requiresPage: 'page.inventory' },
+      { key: 'stock.history', label: 'View stock movement history', requiresPage: 'page.inventory' },
     ],
   },
   {
     key: 'credit',
     label: 'Credit Ledger',
     permissions: [
-      { key: 'credit.view', label: 'View credit ledger' },
-      { key: 'credit.settle', label: 'Settle / write off balances' },
+      { key: 'credit.view', label: 'View credit ledger', requiresPage: 'page.credits' },
+      { key: 'credit.settle', label: 'Settle / write off balances', requiresPage: 'page.credits' },
     ],
   },
   {
     key: 'procurement',
     label: 'Procurement & Transfers',
     permissions: [
-      { key: 'procurement.view', label: 'View vendors & purchase orders' },
-      { key: 'procurement.manage', label: 'Manage vendors & purchase orders' },
-      { key: 'transfers.view', label: 'View inter-location transfers' },
-      { key: 'transfers.manage', label: 'Send, receive & cancel transfers' },
+      { key: 'procurement.view', label: 'View vendors & purchase orders', requiresPage: 'page.procurement' },
+      { key: 'procurement.manage', label: 'Manage vendors & purchase orders', requiresPage: 'page.procurement' },
+      { key: 'transfers.view', label: 'View inter-location transfers', requiresPage: 'page.transfers' },
+      { key: 'transfers.manage', label: 'Send, receive & cancel transfers', requiresPage: 'page.transfers' },
     ],
   },
   {
     key: 'operations',
     label: 'Scheduling & Checklists',
     permissions: [
-      { key: 'scheduling.view', label: 'View the staff schedule' },
-      { key: 'scheduling.manage', label: 'Create shifts & view labor variance' },
-      { key: 'checklists.manage', label: 'Create & delete checklist templates' },
+      { key: 'scheduling.view', label: 'View the staff schedule', requiresPage: 'page.scheduling' },
+      { key: 'scheduling.manage', label: 'Create shifts & view labor variance', requiresPage: 'page.scheduling' },
+      { key: 'checklists.manage', label: 'Create & delete checklist templates', requiresPage: 'page.checklists' },
     ],
   },
   {
     key: 'reservations',
     label: 'Reservations & Waitlist',
     permissions: [
-      { key: 'reservations.view', label: 'View reservations & the waitlist' },
-      { key: 'reservations.manage', label: 'Book, seat, and cancel reservations' },
+      { key: 'reservations.view', label: 'View reservations & the waitlist', requiresPage: 'page.reservations' },
+      { key: 'reservations.manage', label: 'Book, seat, and cancel reservations', requiresPage: 'page.reservations' },
     ],
   },
   {
     key: 'reporting',
     label: 'Reporting',
     permissions: [
-      { key: 'recipecosting.view', label: 'View recipe costing & menu engineering' },
-      { key: 'audit.view', label: 'View the audit log' },
+      { key: 'recipecosting.view', label: 'View recipe costing & menu engineering', requiresPage: 'page.recipecosting' },
+      { key: 'audit.view', label: 'View the audit log', requiresPage: 'page.auditlog' },
     ],
   },
   {
     key: 'expenses',
     label: 'Expenses',
     permissions: [
-      { key: 'expenses.view', label: 'View operating expenses' },
-      { key: 'expenses.manage', label: 'Add, edit & delete operating expenses' },
+      { key: 'expenses.view', label: 'View operating expenses', requiresPage: 'page.expenses' },
+      { key: 'expenses.manage', label: 'Add, edit & delete operating expenses', requiresPage: 'page.expenses' },
     ],
   },
   {
     key: 'settings',
     label: 'Organization Settings',
     permissions: [
-      { key: 'settings.staff', label: 'Manage staff & invitations' },
-      { key: 'settings.roles', label: 'Edit roles & permissions' },
-      { key: 'settings.restaurant', label: 'Restaurant & billing settings' },
-      { key: 'settings.headoffice', label: 'Head Office (multi-location)' },
-      { key: 'locations.manage', label: 'Add, edit & delete locations' },
+      { key: 'settings.staff', label: 'Manage staff & invitations', requiresPage: 'page.staff' },
+      { key: 'settings.roles', label: 'Edit roles & permissions', requiresPage: 'page.staff' },
+      { key: 'settings.restaurant', label: 'Restaurant & billing settings', requiresPage: 'page.settings' },
+      { key: 'settings.headoffice', label: 'Head Office (multi-location)', requiresPage: 'page.headoffice' },
+      { key: 'locations.manage', label: 'Add, edit & delete locations', requiresPage: 'page.locations' },
       // Deliberately separate from locations.manage — a role could be
       // trusted to rename/add locations without also being able to move
       // the attendance geofence, which affects every staff member's
       // ability to clock in at that location.
-      { key: 'locations.geofence', label: 'Set attendance geofence (lat/long)' },
+      { key: 'locations.geofence', label: 'Set attendance geofence (lat/long)', requiresPage: 'page.locations' },
     ],
   },
 ];
@@ -146,6 +146,22 @@ export const ALL_PERMISSIONS = PERMISSION_SECTIONS.flatMap((s) => s.permissions.
 // enabledPages toggle (a restaurant-wide entitlement layer, separate from
 // but ANDed with these same per-role keys; see enabledPagesMigrationService.js).
 export const PAGE_PERMISSION_KEYS = PERMISSION_SECTIONS.find((s) => s.key === 'pages').permissions.map((p) => p.key);
+
+// Maps every permission key to the page.* key it lives "under" — a page.*
+// key maps to itself; every finer key maps to whatever requiresPage says
+// above (undefined if a key isn't tied to one specific page, e.g. none
+// currently, but the shape allows it). requirePermission() uses this to
+// enforce the restaurant's plan (enabledPages) even for finer keys like
+// settings.headoffice — closing the gap where a role could be granted a
+// finer permission for a plan-gated feature without the coarse page.* key
+// ever being checked. Mirrors the same AND-gate Sidebar.tsx already applies
+// client-side, but authoritative here.
+export const PERMISSION_REQUIRED_PAGE = Object.fromEntries([
+  ...PAGE_PERMISSION_KEYS.map((key) => [key, key]),
+  ...PERMISSION_SECTIONS.flatMap((s) => s.permissions)
+    .filter((p) => p.requiresPage)
+    .map((p) => [p.key, p.requiresPage]),
+]);
 
 // Seeded into every new restaurant as its starting 4 non-Owner roles (Owner
 // itself always gets every permission — see DEFAULT_ROLE_PERMISSIONS.Owner

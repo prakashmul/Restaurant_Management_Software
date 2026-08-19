@@ -2,6 +2,8 @@ import jwt from 'jsonwebtoken';
 import Location from '../models/Location.js';
 import StaffMembership from '../models/StaffMembership.js';
 import Role from '../models/Role.js';
+import Restaurant from '../models/Restaurant.js';
+import { PERMISSION_REQUIRED_PAGE } from '../permissions.js';
 
 // Verifies the Bearer token on the Authorization header and attaches
 // { id, email, role, locationId } to req.user, plus the tenant boundary
@@ -75,15 +77,27 @@ export function requirePermission(permissionKey) {
       if (!req.user) {
         return res.status(401).json({ message: 'Authentication required.' });
       }
-      const membership = await StaffMembership.findOne({ userId: req.user.id, restaurantId: req.restaurantId }).select(
-        'roleId'
-      );
+      const [membership, restaurant] = await Promise.all([
+        StaffMembership.findOne({ userId: req.user.id, restaurantId: req.restaurantId }).select('roleId'),
+        Restaurant.findById(req.restaurantId).select('enabledPages'),
+      ]);
       if (!membership?.roleId) {
         return res.status(403).json({ message: 'You do not have permission to perform this action.' });
       }
       const role = await Role.findById(membership.roleId).select('permissions');
       if (!role || !role.permissions.includes(permissionKey)) {
         return res.status(403).json({ message: 'You do not have permission to perform this action.' });
+      }
+      // Authoritative version of the same page-level AND-gate the frontend
+      // Sidebar applies for navigation — a role having this permission
+      // checked isn't enough on its own if the restaurant's plan doesn't
+      // include the page it lives under (e.g. settings.headoffice requires
+      // page.headoffice). Applies even to Owners. Undefined enabledPages
+      // (a pre-existing/grandfathered restaurant) means unrestricted, same
+      // convention used everywhere else this field is checked.
+      const requiredPage = PERMISSION_REQUIRED_PAGE[permissionKey];
+      if (requiredPage && restaurant?.enabledPages && !restaurant.enabledPages.includes(requiredPage)) {
+        return res.status(403).json({ message: 'This feature is not included in your current plan.' });
       }
       return next();
     } catch (err) {

@@ -2,7 +2,9 @@ import request from 'supertest';
 import User from '../../models/User.js';
 import StaffMembership from '../../models/StaffMembership.js';
 import Role from '../../models/Role.js';
+import Restaurant from '../../models/Restaurant.js';
 import { hashResetToken } from '../../utils/resetToken.js';
+import { PAGE_PERMISSION_KEYS } from '../../permissions.js';
 
 let counter = 0;
 
@@ -27,6 +29,14 @@ export async function createAuthedUser(app, overrides = {}) {
 
   const restaurantId = registerRes.body.restaurant.id;
   const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+  // register() starts every new restaurant with enabledPages: [] (real
+  // signups wait on a platform admin to assign a plan) — tests here are
+  // about role-permission logic, not the plan-gating feature itself, so
+  // default to a fully-provisioned restaurant, same as a grandfathered or
+  // already-plan-assigned one in production. Tests that specifically want
+  // to exercise plan restrictions override this directly via the DB.
+  await Restaurant.updateOne({ _id: restaurantId }, { enabledPages: [...PAGE_PERMISSION_KEYS] });
 
   if (overrides.role && overrides.role !== 'Owner') {
     // register() seeds the 5 default roles for every new restaurant — reuse

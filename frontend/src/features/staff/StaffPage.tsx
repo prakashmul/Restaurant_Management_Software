@@ -449,15 +449,34 @@ export const StaffPage: React.FC = () => {
                     <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
                       {section.permissions.map((perm) => {
                         const on = editPermissions.has(perm.key);
-                        const disabled = !canManageRoles || selectedRole.isOwnerRole;
+                        // A page.* key requires itself; anything else uses
+                        // its own requiresPage metadata (see posApi.ts).
+                        // Undefined enabledPages (stale cached session) is
+                        // treated as unrestricted, same convention used
+                        // everywhere else this field is read.
+                        const requiredPage = perm.requiresPage || (perm.key.startsWith('page.') ? perm.key : undefined);
+                        const outOfPlan = !!(
+                          requiredPage &&
+                          currentRestaurant?.enabledPages &&
+                          !currentRestaurant.enabledPages.includes(requiredPage)
+                        );
+                        const disabled = !canManageRoles || selectedRole.isOwnerRole || outOfPlan;
                         return (
                           <label
                             key={perm.key}
+                            title={outOfPlan ? 'Not included in your current plan' : undefined}
                             className={`flex items-center justify-between gap-3 py-2 border-b border-slate-800/50 ${
                               disabled ? 'cursor-default' : 'cursor-pointer'
                             }`}
                           >
-                            <span className={`text-xs ${on ? 'text-slate-200' : 'text-slate-500'}`}>{perm.label}</span>
+                            <span className={`text-xs flex items-center gap-1.5 ${on ? 'text-slate-200' : 'text-slate-500'}`}>
+                              {perm.label}
+                              {outOfPlan && (
+                                <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-800 text-slate-500">
+                                  Not in plan
+                                </span>
+                              )}
+                            </span>
                             <input
                               type="checkbox"
                               checked={on}

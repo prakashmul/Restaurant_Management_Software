@@ -373,6 +373,11 @@ export interface StaffMember {
 export interface Permission {
   key: string;
   label: string;
+  // The page.* key this permission lives under, if any — set for anything
+  // gated behind a plan-limited page (e.g. settings.headoffice requires
+  // page.headoffice). Undefined for page.* keys themselves and for keys not
+  // tied to one specific page. Mirrors backend/permissions.js.
+  requiresPage?: string;
 }
 
 export interface PermissionSection {
